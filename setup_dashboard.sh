@@ -2,13 +2,11 @@
 
 # --- Configuration ---
 APP_BASE_DIR="/www/em9190" # Thư mục cài đặt mới cho dashboard
-APP_SOURCE_DIR="/root/em9190_files" # Thư mục nơi bạn đặt các tệp nguồn mới (app.py, static, templates, requirements.txt, venv.tar.gz)
-# Đường dẫn tới các script đã có sẵn trên hệ thống
-EXISTING_3GINFO_SCRIPT="/root/usr/share/3ginfo-lite/3ginfo.sh"
-# Chúng ta không cần sao chép 3ginfo.sh nữa, chỉ cần đảm bảo nó có quyền thực thi.
-# Các script modem con (như 119990d3) sẽ được 3ginfo.sh gọi trực tiếp.
+APP_SOURCE_DIR="/root/em9190_files" # Thư mục nơi bạn đặt các tệp nguồn ứng dụng (trước khi setup)
+# Đường dẫn tới script 3ginfo.sh đã có sẵn trên hệ thống
+EXISTING_3GINFO_SCRIPT="/usr/share/3ginfo-lite/3ginfo.sh"
 
-PYTHON_CMD="/usr/bin/python3"
+PYTHON_CMD="/usr/bin/python3" # Lệnh python3 hệ thống
 FLASK_APP_SCRIPT="app.py"
 SERVICE_NAME="em9190_dashboard"
 UHTTPD_CONFIG="/etc/config/uhttpd"
@@ -21,46 +19,73 @@ VENV_TARBALL="venv.tar.gz" # Tên file nén môi trường ảo nếu có
 # --- Helper Functions ---
 log_info() { echo "[INFO] $1"; }
 log_warning() { echo "[WARN] $1"; }
-log_error() { echo "[ERROR] $1"; return 1; }
+log_error() { echo "[ERROR] $1"; return 1; } # Trả về mã lỗi
 
-check_cmd_installed() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        log_error "Command '$1' not found. Please install it using 'opkg install $1'."
-        return 1
-    fi
-    return 0
+# Function to check if a command exists
+check_cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
+# Function to install package and check for success
+install_pkg() {
+    local pkg_name="$1"
+    local log_prefix="$2" # [INFO] or [ERROR]
+    
+    if check_cmd_exists "$pkg_name"; then
+        log_info "$log_prefix: '$pkg_name' is already installed."
+        return 0
+    fi
+    
+    log_info "$log_prefix: '$pkg_name' not found. Attempting to install..."
+    opkg update || log_error "$log_prefix: Failed to update opkg. Please check internet connection."
+    opkg install "$pkg_name"
+    if [ $? -eq 0 ]; then
+        log_info "$log_prefix: '$pkg_name' installed successfully."
+        return 0
+    else
+        log_error "$log_prefix: Failed to install '$pkg_name'. Please install it manually using 'opkg install $pkg_name'."
+        return 1
+    fi
+}
+
+# Function to clean up partial setup
 cleanup_failed_setup() {
     log_warning "An error occurred. Attempting to clean up partially installed files..."
+    # Stop the service if it's running
     if [ -f "$PID_FILE" ]; then
         log_warning "Stopping any running instance of ${SERVICE_NAME}..."
         start-stop-daemon -K -p "$PID_FILE" --quiet || true
         rm -f "$PID_FILE"
     fi
+    # Remove the init.d script
     [ -f "$INIT_SCRIPT_PATH" ] && rm "$INIT_SCRIPT_PATH"
-    # Xóa cấu hình uhttpd phức tạp hơn, chỉ reload là đủ cho hầu hết trường hợp
-    log_warning "Cleanup complete. Please review the logs and try again after fixing issues."
+    # Note: Removing uhttpd config is complex and risky, better to leave it and let user manually fix.
+    
+    log_warning "Cleanup attempted. Please review logs and fix issues manually."
 }
 
 # --- Script Execution ---
 
 log_info "--- Starting EM9190 Dashboard Setup ---"
 
-# 1. Kiểm tra các gói cần thiết và cài đặt nếu thiếu
+# 1. Kiểm tra và cài đặt các gói cần thiết
 log_info "Checking and installing necessary packages..."
-opkg update || log_error "Failed to update opkg. Please ensure you have internet connection."
-check_cmd_installed "python3" || exit 1
-check_cmd_installed "pip3" || log_error "pip3 not found. Attempting to install..." || opkg install python3-pip || exit 1
-check_cmd_installed "python3-flask" || log_info "Flask not found, attempting to install..." || opkg install python3-flask
-check_cmd_installed "comgt" || log_info "comgt not found, attempting to install..." || opkg install comgt
-check_cmd_installed "screen" || log_info "screen not found, attempting to install..." || opkg install screen
-check_cmd_installed "start-stop-daemon" || log_error "start-stop-daemon not found. This is critical for service management. Please ensure it's installed (part of busybox/initscripts)."
+if ! install_pkg python3 "[ERROR]"; then exit 1; fi
+if ! install_pkg python3-pip "[ERROR]"; then exit 1; fi
+if ! install_pkg python3-flask "[ERROR]"; then exit 1; fi
+if ! install_pkg comgt "[INFO]"; then log_warning "comgt not installed. sms_tool might not work. Install it if needed."; fi # comgt is optional but recommended for sms_tool
+if ! install_pkg screen "[INFO]"; then log_warning "screen not installed. Useful for managing processes."; fi
+
+# Check for start-stop-daemon (critical for service management)
+if ! check_cmd_exists "start-stop-daemon"; then
+    log_error "Critical command 'start-stop-daemon' not found. This is essential for managing services on OpenWrt. Ensure initscripts package is installed."
+    exit 1
+fi
 
 # 2. Kiểm tra sự tồn tại của các script đã có sẵn
 log_info "Verifying existence of existing scripts..."
-if ! [ -f "${EXISTING_3GINFO_SCRIPT}" ]; then
-    log_error "Script '${EXISTING_3GINFO_SCRIPT}' not found. This is critical for fetching modem data. Please ensure '3ginfo-lite' package is installed correctly."
+if ! [ -x "${EXISTING_3GINFO_SCRIPT}" ]; then
+    log_error "Script '${EXISTING_3GINFO_SCRIPT}' not found or not executable. This is critical for fetching modem data. Please ensure '3ginfo-lite' package is installed correctly and the path is correct."
     exit 1
 fi
 log_info "Found existing script: ${EXISTING_3GINFO_SCRIPT}"
@@ -73,33 +98,28 @@ log_warning "  - app.py"
 log_warning "  - requirements.txt"
 log_warning "  - static/ (directory containing css/ and js/)"
 log_warning "  - templates/ (directory containing index.html)"
-log_warning "  - ${VENV_TARBALL} (if you have a pre-built venv)"
+log_warning "  - ${VENV_TARBALL} (if you have a pre-built venv for your router's architecture)"
 log_warning "Then, press ENTER to continue after copying."
 log_warning "--------------------------------------------------------------------"
 read -p "Press Enter when files are copied..."
 
-# --- Kiểm tra sự tồn tại của các tệp ứng dụng MỚI ---
+# --- Kiểm tra sự tồn tại của các tệp ứng dụng MỚI SAU KHI sao chép ---
 log_info "Verifying required application files after copy..."
 if ! [ -f "${APP_SOURCE_DIR}/app.py" ]; then log_error "app.py not found in ${APP_SOURCE_DIR}. Setup failed."; cleanup_failed_setup; exit 1; fi
 if ! [ -f "${APP_SOURCE_DIR}/requirements.txt" ]; then log_error "requirements.txt not found in ${APP_SOURCE_DIR}. Setup failed."; cleanup_failed_setup; exit 1; fi
 if ! [ -f "${APP_SOURCE_DIR}/templates/index.html" ]; then log_error "templates/index.html not found in ${APP_SOURCE_DIR}. Setup failed."; cleanup_failed_setup; exit 1; fi
 if ! [ -f "${APP_SOURCE_DIR}/static/js/script.js" ]; then log_error "static/js/script.js not found in ${APP_SOURCE_DIR}. Setup failed."; cleanup_failed_setup; exit 1; fi
 
-# 3. Tạo cấu trúc thư mục ứng dụng mới
+# 3. Tạo cấu trúc thư mục ứng dụng mới và sao chép tệp
 log_info "Creating application directory structure at ${APP_BASE_DIR}..."
 mkdir -p "${APP_BASE_DIR}/static/css"
 mkdir -p "${APP_BASE_DIR}/static/js"
 mkdir -p "${APP_BASE_DIR}/templates"
-mkdir -p "${APP_BASE_DIR}/venv/bin"
-# Tạo các thư mục cần thiết cho venv tùy theo phiên bản python
-# Tìm phiên bản python để tạo đúng thư mục site-packages
-PY_VERSION=$(basename "$(dirname "${PYTHON_CMD}")") # e.g., python3, python3.9, python3.10
-# Fallback if PYTHON_CMD is just 'python3' and not a specific versioned path
-if [[ "$PY_VERSION" == "bin" ]]; then
-    PY_VERSION=$(python3 --version 2>/dev/null | awk '{print $2}' | cut -d. -f1,2)
-    if [ -z "$PY_VERSION" ]; then PY_VERSION="python3.9"; fi # Default if unknown
+# Tự động tạo thư mục venv nếu cần
+if [ ! -d "${APP_BASE_DIR}/venv" ]; then
+    log_info "Creating Python virtual environment directory at ${APP_BASE_DIR}/venv..."
+    mkdir -p "${APP_BASE_DIR}/venv"
 fi
-mkdir -p "${APP_BASE_DIR}/venv/lib/${PY_VERSION}/site-packages"
 
 # Sao chép các tệp ứng dụng mới vào vị trí cài đặt cuối cùng
 log_info "Copying application files to ${APP_BASE_DIR}..."
@@ -108,45 +128,58 @@ cp "${APP_SOURCE_DIR}/requirements.txt" "${APP_BASE_DIR}/" || { log_error "Faile
 cp -r "${APP_SOURCE_DIR}/static" "${APP_BASE_DIR}/" || { log_error "Failed to copy static directory."; cleanup_failed_setup; exit 1; }
 cp -r "${APP_SOURCE_DIR}/templates" "${APP_BASE_DIR}/" || { log_error "Failed to copy templates directory."; cleanup_failed_setup; exit 1; }
 
-# Xử lý môi trường ảo
+# Xử lý môi trường ảo (tạo mới hoặc giải nén)
 if [ -f "${APP_SOURCE_DIR}/${VENV_TARBALL}" ]; then
     log_info "Extracting virtual environment from ${VENV_TARBALL} to ${APP_BASE_DIR}/venv/..."
+    # Cần đảm bảo thư mục venv trống hoặc xóa nội dung cũ nếu có
+    rm -rf "${APP_BASE_DIR}/venv/*"
     tar -xzf "${APP_SOURCE_DIR}/${VENV_TARBALL}" -C "${APP_BASE_DIR}/venv/" || { log_error "Failed to extract virtual environment."; cleanup_failed_setup; exit 1; }
 else
     log_info "No ${VENV_TARBALL} found. Creating new Python virtual environment at ${APP_BASE_DIR}/venv/..."
-    cd "${APP_BASE_DIR}" || { log_error "Failed to change directory to ${APP_BASE_DIR} for venv creation."; cleanup_failed_setup; exit 1; }
+    # Xóa nội dung cũ nếu venv đã tồn tại nhưng không phải từ file nén
+    [ -d "${APP_BASE_DIR}/venv" ] && rm -rf "${APP_BASE_DIR}/venv/*"
     
-    "${PYTHON_CMD}" -m venv venv || { log_error "Failed to create virtual environment."; cleanup_failed_setup; exit 1; }
+    "${PYTHON_CMD}" -m venv "${APP_BASE_DIR}/venv" || { log_error "Failed to create virtual environment."; cleanup_failed_setup; exit 1; }
 fi
 
 # Cài đặt thư viện Python vào venv
-log_info "Installing Python dependencies from requirements.txt..."
+log_info "Installing Python dependencies from requirements.txt using venv's pip..."
 "${APP_BASE_DIR}/venv/bin/pip" install -r "${APP_BASE_DIR}/requirements.txt" || { log_error "Failed to install Python dependencies. Please check requirements.txt and permissions."; cleanup_failed_setup; exit 1; }
 
-# 4. Cấp quyền thực thi cho script 3ginfo.sh (chỉ để chắc chắn)
+# 4. Cấp quyền thực thi cho script 3ginfo.sh
 log_info "Ensuring execute permissions for existing script: ${EXISTING_3GINFO_SCRIPT}..."
-chmod +x "${EXISTING_3GINFO_SCRIPT}" || log_warning "Failed to set execute permission for ${EXISTING_3GINFO_SCRIPT}."
+chmod +x "${EXISTING_3GINFO_SCRIPT}" || log_warning "Failed to set execute permission for ${EXISTING_3GINFO_SCRIPT}. Modem data fetching might fail."
 
 # 5. Tạo init.d script cho dịch vụ dashboard
 log_info("Creating init.d script at ${INIT_SCRIPT_PATH}...")
 
-PYTHON_EXEC_IN_VENV="${APP_BASE_DIR}/venv/bin/python" # Đường dẫn chính xác tới python trong venv
+# Lấy đường dẫn chính xác tới python trong venv
+PYTHON_EXEC_IN_VENV="${APP_BASE_DIR}/venv/bin/python"
+# Đường dẫn tới script flask
+FLASK_EXEC="${PYTHON_EXEC_IN_VENV} -m flask --app ${FLASK_APP_SCRIPT} --host 0.0.0.0 --port ${PORT}"
+
+# Tách chuỗi để chạy lệnh flask qua start-stop-daemon
+# Cần xử lý đặc biệt để shell thực thi đúng chuỗi lệnh này.
+# Thay vì dùng `eval source`, ta trực tiếp gọi python từ venv.
+# Flask sẽ tự tìm các tệp static/templates dựa trên thư mục CHDIR.
 
 INIT_SCRIPT_CONTENT=$(cat << EOF
 #!/bin/sh /etc/rc.common
+
 START=90
 STOP=10
 SERVICE_NAME="${SERVICE_NAME}"
 APP_DIR="${APP_BASE_DIR}"
-# Use the python executable from the virtual environment
+# Use the specific python executable from the virtual environment
 PYTHON_EXEC="${PYTHON_EXEC_IN_VENV}" 
-FLASK_APP_SCRIPT="${FLASK_APP_SCRIPT}"
+# Command to run flask
+FLASK_CMD="${FLASK_EXEC}"
 PORT="${PORT}"
 PID_FILE="${PID_FILE}"
 LOG_FILE="${APP_BASE_DIR}/nohup.out"
 
-# Ensure python executable exists
-[ -x "${PYTHON_EXEC}" ] || { log_error "Python executable from venv not found at ${PYTHON_EXEC}."; exit 1; }
+# Ensure executable exists
+[ -x "\${PYTHON_EXEC}" ] || { log_error "Python executable from venv not found at \${PYTHON_EXEC}. Cannot start service."; exit 1; }
 
 start() {
     log_info "Starting \${SERVICE_NAME}..."
@@ -161,9 +194,23 @@ start() {
         fi
     fi
 
-    log_info "Starting \${SERVICE_NAME} with Python: \${PYTHON_EXEC} \${FLASK_APP_SCRIPT} on port \${PORT}"
+    log_info "Starting \${SERVICE_NAME} using: \$(${PYTHON_CMD} --version) from venv at \${PYTHON_EXEC}"
+    log_info "Running Flask app: \${FLASK_APP_SCRIPT} on port \${PORT}"
     
-    # Start using start-stop-daemon
+    # Using start-stop-daemon. The --exec should be the full command to run.
+    # We need to ensure the command includes the python interpreter and its arguments.
+    # --chdir is critical for Flask to find templates/static
+    start-stop-daemon -S -b -p "\${PID_FILE}" -m -N "\${SERVICE_NAME}" -u root --chdir "\${APP_DIR}" --exec "\${PYTHON_EXEC}" -- \${FLASK_CMD//--host 0.0.0.0/} # Remove --host from the command passed to exec if needed, or ensure it's correctly handled.
+                                                                                                                                        # The command passed to exec should be the interpreter followed by the script/module.
+                                                                                                                                        # For Flask, it's `python -m flask run ...` or `python app.py`
+                                                                                                                                        # Let's try calling python directly with the script.
+    # Corrected start-stop-daemon exec:
+    # start-stop-daemon -S -b -p "\${PID_FILE}" -m -N "\${SERVICE_NAME}" -u root --chdir "\${APP_DIR}" --exec "\${PYTHON_EXEC}" -- "\${FLASK_APP_SCRIPT}" # This might fail if script requires args or specific python env activation.
+    # A safer way might be to use a wrapper script, or ensure FLASK_APP env var is set.
+    # Let's stick to the simplest form for now:
+    # start-stop-daemon -S -b -p "\${PID_FILE}" -m -N "\${SERVICE_NAME}" -u root --chdir "\${APP_DIR}" --exec "\${PYTHON_EXEC}" -- "-m" "flask" "run" "--host=0.0.0.0" "--port=${PORT}" "--app" "\${FLASK_APP_SCRIPT}"
+    
+    # Let's use the simplest: python app.py as originally in app.py
     start-stop-daemon -S -b -p "\${PID_FILE}" -m -N "\${SERVICE_NAME}" -u root --chdir "\${APP_DIR}" --exec "\${PYTHON_EXEC}" -- "\${FLASK_APP_SCRIPT}"
     
     if [ \$? -eq 0 ]; then
@@ -196,7 +243,7 @@ restart() {
 enable() {
     log_info "Enabling ${SERVICE_NAME} service..."
     chmod +x "${INIT_SCRIPT_PATH}"
-    local LINK="/etc/rc.d/S90${SERVICE_NAME}" # Use a consistent symlink name
+    local LINK="/etc/rc.d/S90${SERVICE_NAME}" # Use a consistent symlink name for startup
     if [ ! -L "\$LINK" ]; then
         ln -s "${INIT_SCRIPT_PATH}" "\$LINK"
         log_info "${SERVICE_NAME} enabled. It will start on boot."
@@ -259,7 +306,7 @@ service "${SERVICE_NAME}" start || log_error("Failed to start the service. Check
 UHTTPD_PROXY_SECTION="em9190_proxy" # Tên section tùy ý
 
 log_info("Configuring uhttpd to serve static files and proxy API requests...")
-# Kiểm tra xem section proxy đã tồn tại chưa
+# Kiểm tra và thêm cấu hình uhttpd nếu chưa có
 if ! uci show uhttpd | grep -q "config uhttpd '${UHTTPD_PROXY_SECTION}'"; then
     log_info("Adding uhttpd configuration for ${SERVICE_NAME}...")
     
@@ -271,7 +318,8 @@ if ! uci show uhttpd | grep -q "config uhttpd '${UHTTPD_PROXY_SECTION}'"; then
     # Thêm section cho proxy API
     uci add uhttpd proxy
     uci set uhttpd.@proxy[-1]=${UHTTPD_PROXY_SECTION} # Gán tên section
-    uci set uhttpd.@proxy[-1].forward_host="127.0.0.1" # Flask chỉ lắng nghe trên localhost cho uhttpd proxy
+    # Flask sẽ lắng nghe trên tất cả các interface để uhttpd có thể proxy đến
+    uci set uhttpd.@proxy[-1].forward_host="0.0.0.0" 
     uci set uhttpd.@proxy[-1].forward_port="${PORT}"
     uci add_list uhttpd.@proxy[-1].forward_rule="/api.cgi* http"
     
@@ -280,7 +328,7 @@ if ! uci show uhttpd | grep -q "config uhttpd '${UHTTPD_PROXY_SECTION}'"; then
     /etc/init.d/uhttpd reload || log_error("Failed to reload uhttpd. Please restart it manually: /etc/init.d/uhttpd restart")
 else
     log_info("uhttpd configuration for ${SERVICE_NAME} already exists. Skipping addition.")
-    # Tùy chọn: Nếu port có thể thay đổi, hãy cập nhật nó
+    # Tùy chọn: Cập nhật port nếu cần thiết
     # uci set uhttpd."${UHTTPD_PROXY_SECTION}".forward_port="${PORT}"
     # uci commit uhttpd
     # /etc/init.d/uhttpd reload

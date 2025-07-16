@@ -1,595 +1,1283 @@
 #!/bin/sh
 
-# ==============================================================================
-# Script tự động thiết lập màn hình giám sát modem Sierra Wireless EM9190
-# Chạy trên OpenWrt/LEDE.
-#
-# Chức năng:
-# 1. Tạo thư mục /usr/bin/em9190_monitor để chứa script thực thi.
-# 2. Tạo thư mục /www/em9190 để chứa file HTML tĩnh.
-# 3. Tạo script `get_em9190_status.sh` (dữ liệu JSON) trong /usr/bin/em9190_monitor.
-# 4. Tạo file `em9190_status.html` (giao diện web) trong /www/em9190.
-# 5. Cấu hình uhttpd để phục vụ các file này trên port 9999.
-# 6. Khởi động lại uhttpd để áp dụng cấu hình.
-#
-# Cách sử dụng:
-# 1. Đảm bảo router của bạn đã cài đặt 'gcom' hoặc 'sms_tool'.
-#    (opkg update && opkg install gcom) HOẶC (opkg update && opkg install sms_tool)
-# 2. Lưu nội dung này vào một file (ví dụ: setup_em9190_monitor.sh).
-# 3. Gán quyền thực thi: chmod +x setup_em9190_monitor.sh
-# 4. Chạy script: ./setup_em9190_monitor.sh
-#
-# Sau khi chạy thành công, truy cập vào http://<IP_CỦA_ROUTER>:9999/
-# (Ví dụ: http://192.168.1.1:9999/)
-# ==============================================================================
+# ===================================================================
+# Setup Script for EM9190 Monitoring Web Interface
+# Port: 8888
+# Website Directory: /www/em9190
+# ===================================================================
 
-# --- Cấu hình ---
-SCRIPT_DIR="/usr/bin/em9190_monitor"
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WEB_DIR="/www/em9190"
+CGI_DIR="/www/em9190/cgi-bin"
+PORT="8888"
+UHTTPD_CONFIG="/etc/config/uhttpd"
 
-STATUS_SCRIPT_NAME="get_em9190_status.sh"
-INDEX_HTML_NAME="em9190_status.html"
+echo "=== Sierra Wireless EM9190 Monitoring Setup ==="
+echo "Port: $PORT"
+echo "Web Directory: $WEB_DIR"
+echo ""
 
-STATUS_SCRIPT="${SCRIPT_DIR}/${STATUS_SCRIPT_NAME}"
-INDEX_HTML="${WEB_DIR}/${INDEX_HTML_NAME}"
+# 1. Tạo thư mục website
+echo "Tạo thư mục website..."
+mkdir -p "$WEB_DIR"
+mkdir -p "$CGI_DIR"
 
-UHTTPD_CONFIG_SECTION="em9190_monitor"
-UHTTPD_PORT="9999"
-
-# Đường dẫn đến các script phụ trợ của 3ginfo-lite (nếu có, ví dụ detect.sh, mccmnc.dat)
-RES="/usr/share/3ginfo-lite" 
-
-echo ">>> Bắt đầu thiết lập màn hình giám sát EM9190..."
-
-# --- 1. Tạo thư mục script và thư mục web ---
-echo ">>> Tạo thư mục script: ${SCRIPT_DIR}"
-mkdir -p "${SCRIPT_DIR}"
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể tạo thư mục ${SCRIPT_DIR}. Hãy kiểm tra quyền hoặc dung lượng đĩa. Thoát."
-    exit 1
-fi
-
-echo ">>> Tạo thư mục web: ${WEB_DIR}"
-mkdir -p "${WEB_DIR}"
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể tạo thư mục ${WEB_DIR}. Hãy kiểm tra quyền hoặc dung lượng đĩa. Thoát."
-    exit 1
-fi
-
-# --- 2. Tạo script lấy thông tin modem (get_em9190_status.sh) ---
-echo ">>> Tạo script lấy thông tin modem: ${STATUS_SCRIPT}"
-cat << 'EOF_STATUS_SCRIPT' > "${STATUS_SCRIPT}"
-#!/bin/sh
-
-# Script để lấy trạng thái modem EM9190 và xuất ra JSON.
-# Cần 'gcom' hoặc 'sms_tool' để giao tiếp với modem.
-
-# --- Khai báo biến ---
-RES="/usr/share/3ginfo-lite" # Đường dẫn đến các script phụ trợ, nếu có
-
-# --- Hàm định nghĩa băng tần 4G ---
-band4g() {
-	echo -n "B${1}"
-	case "${1}" in
-		"1") echo -n " (2100 MHz)";; "2") echo -n " (1900 MHz)";; "3") echo -n " (1800 MHz)";; "4") echo -n " (1700 MHz)";; "5") echo -n " (850 MHz)";; "7") echo -n " (2600 MHz)";; "8") echo -n " (900 MHz)";; "11") echo -n " (1500 MHz)";; "12") echo -n " (700 MHz)";; "13") echo -n " (700 MHz)";; "14") echo -n " (700 MHz)";; "17") echo -n " (700 MHz)";; "18") echo -n " (850 MHz)";; "19") echo -n " (850 MHz)";; "20") echo -n " (800 MHz)";; "21") echo -n " (1500 MHz)";; "24") echo -n " (1600 MHz)";; "25") echo -n " (1900 MHz)";; "26") echo -n " (850 MHz)";; "28") echo -n " (700 MHz)";; "29") echo -n " (700 MHz)";; "30") echo -n " (2300 MHz)";; "31") echo -n " (450 MHz)";; "32") echo -n " (1500 MHz)";; "34") echo -n " (2000 MHz)";; "37") echo -n " (1900 MHz)";; "38") echo -n " (2600 MHz)";; "39") echo -n " (1900 MHz)";; "40") echo -n " (2300 MHz)";; "41") echo -n " (2500 MHz)";; "42") echo -n " (3500 MHz)";; "43") echo -n " (3700 MHz)";; "46") echo -n " (5200 MHz)";; "47") echo -n " (5900 MHz)";; "48") echo -n " (3500 MHz)";; "50") echo -n " (1500 MHz)";; "51") echo -n " (1500 MHz)";; "53") echo -n " (2400 MHz)";; "54") echo -n " (1600 MHz)";; "65") echo -n " (2100 MHz)";; "66") echo -n " (1700 MHz)";; "67") echo -n " (700 MHz)";; "69") echo -n " (2600 MHz)";; "70") echo -n " (1700 MHz)";; "71") echo -n " (600 MHz)";; "72") echo -n " (450 MHz)";; "73") echo -n " (450 MHz)";; "74") echo -n " (1500 MHz)";; "75") echo -n " (1500 MHz)";; "76") echo -n " (1500 MHz)";; "85") echo -n " (700 MHz)";; "87") echo -n " (410 MHz)";; "88") echo -n " (410 MHz)";; "103") echo -n " (700 MHz)";; "106") echo -n " (900 MHz)";; "*") echo -n "";;
-	esac
-}
-
-# --- Hàm định nghĩa băng tần 5G ---
-band5g() {
-	echo -n "n${1}"
-	case "${1}" in
-		"1") echo -n " (2100 MHz)";; "2") echo -n " (1900 MHz)";; "3") echo -n " (1800 MHz)";; "5") echo -n " (850 MHz)";; "7") echo -n " (2600 MHz)";; "8") echo -n " (900 MHz)";; "12") echo -n " (700 MHz)";; "13") echo -n " (700 MHz)";; "14") echo -n " (700 MHz)";; "18") echo -n " (850 MHz)";; "20") echo -n " (800 MHz)";; "24") echo -n " (1600 MHz)";; "25") echo -n " (1900 MHz)";; "26") echo -n " (850 MHz)";; "28") echo -n " (700 MHz)";; "29") echo -n " (700 MHz)";; "30") echo -n " (2300 MHz)";; "34") echo -n " (2100 MHz)";; "38") echo -n " (2600 MHz)";; "39") echo -n " (1900 MHz)";; "40") echo -n " (2300 MHz)";; "41") echo -n " (2500 MHz)";; "46") echo -n " (5200 MHz)";; "47") echo -n " (5900 MHz)";; "48") echo -n " (3500 MHz)";; "50") echo -n " (1500 MHz)";; "51") echo -n " (1500 MHz)";; "53") echo -n " (2400 MHz)";; "54") echo -n " (1600 MHz)";; "65") echo -n " (2100 MHz)";; "66") echo -n " (1700/2100 MHz)";; "67") echo -n " (700 MHz)";; "70") echo -n " (2000 MHz)";; "71") echo -n " (600 MHz)";; "74") echo -n " (1500 MHz)";; "75") echo -n " (1500 MHz)";; "76") echo -n " (1500 MHz)";; "77") echo -n " (3700 MHz)";; "78") echo -n " (3500 MHz)";; "79") echo -n " (4700 MHz)";; "80") echo -n " (1800 MHz)";; "81") echo -n " (900 MHz)";; "82") echo -n " (800 MHz)";; "83") echo -n " (700 MHz)";; "84") echo -n " (2100 MHz)";; "85") echo -n " (700 MHz)";; "86") echo -n " (1700 MHz)";; "89") echo -n " (850 MHz)";; "90") echo -n " (2500 MHz)";; "91") echo -n " (800/1500 MHz)";; "92") echo -n " (800/1500 MHz)";; "93") echo -n " (900/1500 MHz)";; "94") echo -n " (900/1500 MHz)";; "95") echo -n " (2100 MHz)";; "96") echo -n " (6000 MHz)";; "97") echo -n " (2300 MHz)";; "98") echo -n " (1900 MHz)";; "99") echo -n " (1600 MHz)";; "100") echo -n " (900 MHz)";; "101") echo -n " (1900 MHz)";; "102") echo -n " (6200 MHz)";; "104") echo -n " (6700 MHz)";; "105") echo -n " (600 MHz)";; "106") echo -n " (900 MHz)";; "109") echo -n " (700/1500 MHz)";; "257") echo -n " (28 GHz)";; "258") echo -n " (26 GHz)";; "259") echo -n " (41 GHz)";; "260") echo -n " (39 GHz)";; "261") echo -n " (28 GHz)";; "262") echo -n " (47 GHz)";; "263") echo -n " (60 GHz)";; "*") echo -n "";;
-	esac
-}
-
-# --- Hàm tìm thiết bị modem ---
-# Sử dụng logic từ detect.sh để tìm cổng serial của modem
-detect_modem_device() {
-    local DEVICE=""
-    
-    # Try from modemdefine config
-    local CONFIG="modemdefine"
-    local MODEMZ=$(uci show \$CONFIG 2>/dev/null | grep -o "@modemdefine\[[0-9]*\]\.modem" | wc -l | xargs)
-    if [ -n "\$MODEMZ" ]; then
-        if [[ \$MODEMZ = 0 ]]; then
-            DEVICE=\$(uci -q get 3ginfo.@3ginfo[0].device)
-            if [ -n "\$DEVICE" ]; then echo "\$DEVICE"; return 0; fi
-        fi
-        if [[ \$MODEMZ = 1 ]]; then
-            DEVICE=\$(uci -q get modemdefine.@modemdefine[0].comm_port)
-            if [ -n "\$DEVICE" ]; then echo "\$DEVICE"; return 0; fi
-        fi
-        if [[ \$MODEMZ > 1 ]]; then
-            DEVICE=\$(uci -q get modemdefine.@general[0].main_modem)
-            if [ -n "\$DEVICE" ]; then echo "\$DEVICE"; return 0; fi
-        fi
-    fi
-
-    # Try from 3ginfo config
-    DEVICE=\$(uci -q get 3ginfo.@3ginfo[0].device)
-    if [ -n "\$DEVICE" ]; then echo "\$DEVICE"; return 0; fi
-
-    # Try from temporary config file
-    local MODEMFILE="/tmp/modem"
-    if [ -e "\$MODEMFILE" ]; then
-        DEVICE=\$(cat "\$MODEMFILE")
-        if [ -n "\$DEVICE" ]; then echo "\$DEVICE"; return 0; fi
-    fi
-
-    # Fallback: Find any device that responds to AT commands
-    # This part requires gcom or sms_tool to be installed
-    local DEVICES=\$(find /dev -name "ttyUSB*" -o -name "ttyACM*" -o -name "wwan*at*" | sort -r)
-    for DEV in \$DEVICES; do
-        if [ -x "/usr/bin/gcom" ]; then
-            /usr/bin/gcom -d "\$DEV" -s /usr/share/3ginfo-lite/check.gcom >/dev/null 2>&1
-            if [ \$? = 0 ]; then
-                echo "\$DEV" | tee "\$MODEMFILE"
-                return 0
-            fi
-        elif [ -x "/usr/bin/sms_tool" ]; then
-            # sms_tool doesn't have a direct "check.gcom" equivalent.
-            # We can try a simple AT command that should always work.
-            /usr/bin/sms_tool -d "\$DEV" at "AT" >/dev/null 2>&1
-            if [ \$? = 0 ]; then
-                echo "\$DEV" | tee "\$MODEMFILE"
-                return 0
-            fi
-        fi
-    done
-
-    echo "" # No device found
-    return 1
-}
-
-# --- Hàm vệ sinh chuỗi/số cho JSON ---
-sanitize_string() {
-    [ -z "\$1" ] && echo "-" || echo "\$1" | tr -d '\\r\\n'
-}
-sanitize_number() {
-    [ -z "\$1" ] && echo "-" || echo "\$1"
-}
-
-# --- Bắt đầu lấy dữ liệu ---
-DEVICE=\$(detect_modem_device)
-
-if [ -z "\$DEVICE" ]; then
-    echo '{"error":"No modem device found. Please ensure modem is connected and drivers are loaded."}'
-    exit 0
-fi
-
-# Biến để lưu trữ toàn bộ output từ các lệnh AT
-O=""
-
-# Kiểm tra công cụ AT
-AT_TOOL=""
-if [ -x "/usr/bin/gcom" ]; then
-    AT_TOOL="/usr/bin/gcom"
-elif [ -x "/usr/bin/sms_tool" ]; then
-    AT_TOOL="/usr/bin/sms_tool"
-fi
-
-if [ -z "\$AT_TOOL" ]; then
-    echo '{"error":"Required tool (gcom or sms_tool) not found. Please install one."}'
-    exit 0
-fi
-
-# Gửi một loạt các lệnh AT
-O=\$( (
-    echo "AT+CGMM"
-    echo "AT+CGMR"
-    echo "AT!GSTATUS?"
-    echo "AT+CSQ"
-    echo "AT+CREG?"
-    echo "AT+CPIN?"
-    echo "AT+GSN"
-    echo "AT+CIMI"
-    echo "AT+ICCID"
-    # Thêm các lệnh AT khác nếu cần để lấy thông tin chi tiết hơn
-    # Ví dụ:
-    # echo "AT+QCAINFO" # For Quectel CA info
-    # echo "AT+QENG=\"servingcell\"" # For Quectel serving cell info
-) | "\$AT_TOOL" -d "\$DEVICE" -f - 2>/dev/null )
-
-if [ -z "\$O" ]; then
-    echo '{"error":"Failed to get modem response. Device might be busy or invalid."}'
-    exit 0
-fi
-
-# --- Phân tích dữ liệu ---
-MODEL=$(echo "\$O" | sed -n '/^\(AT+CGMM\|ATI\)/,+2p' | awk '/^\s*[^AT]/{print \$0; exit}' | tr -d '\r\n')
-FW=$(echo "\$O" | sed -n '/^\(AT+CGMR\|AT+GMR\)/,+2p' | awk '/^\s*[^AT]/{print \$0; exit}' | tr -d '\r\n')
-
-TEMP_RAW=$(echo "\$O" | awk -F: '/Temperature:/ {print \$3}' | tr -d ' \r\n' | xargs)
-[ -n "\$TEMP_RAW" ] && TEMP="\$TEMP_RAW °C" || TEMP="-"
-
-MODE_RAW=$(echo "\$O" | awk '/^System mode:/ {print \$3}')
-case "\$MODE_RAW" in
-    "LTE") MODE="LTE" ;;
-    "ENDC") MODE="5G NSA" ;;
-    "NR5G") MODE="5G SA" ;;
-    *) MODE="Unknown" ;;
-esac
-
-TAC_RAW=$(echo "\$O" | awk '/.*TAC:/ {print \$6}' | tr -d '\r\n')
-if [ -n "\$TAC_RAW" ]; then
-    TAC_DEC=$(printf "%d" "0x\$TAC_RAW")
-    TAC_HEX="\$TAC_RAW"
-else
-    TAC_DEC="-"
-    TAC_HEX="-"
-fi
-
-# Tín hiệu (GSTATUS? có thể không chi tiết, dùng các giá trị mặc định)
-# EM9190 thường có RSSI, RSRP, RSRQ, SINR trên một dòng riêng hoặc gần nhau
-RSSI=$(echo "\$O" | awk '/RSSI:/ {print \$2; exit}' | tr -d '\r\n')
-RSRP=$(echo "\$O" | awk '/RSRP:/ {print \$2; exit}' | tr -d '\r\n')
-RSRQ=$(echo "\$O" | awk '/RSRQ:/ {print \$3; exit}' | tr -d '\r\n')
-SINR=$(echo "\$O" | awk '/SINR:/ {print \$3; exit}' | tr -d '\r\n')
-
-# Bands (Primary & Secondary for LTE & 5G)
-PBAND="-"; PBAND_MHZ="-"; S1BAND="-"; S1BAND_MHZ="-";
-S2BAND="-"; S2BAND_MHZ="-"; S3BAND="-"; S3BAND_MHZ="-";
-
-LTE_BAND_RAW=$(echo "\$O" | awk '/^LTE band:/ {print \$3}')
-LTE_BAND_MHZ=$(echo "\$O" | awk '/^LTE band:/ {print \$6}')
-if [ -n "\$LTE_BAND_RAW" ]; then
-    PBAND="\$(band4g \${LTE_BAND_RAW/B/})"
-    [ -n "\$LTE_BAND_MHZ" ] && PBAND_MHZ="@\${LTE_BAND_MHZ} MHz"
-    MODE="\${MODE} \${PBAND}\${PBAND_MHZ}"
-fi
-
-# SCC1 LTE
-LTE_SCC1_STATE=$(echo "\$O" | awk -F: '/^LTE SCC1 state:.*ACTIVE/ {print \$3}')
-LTE_SCC1_MHZ=$(echo "\$O" | awk '/^LTE SCC1 bw/ {print \$5}')
-if [ -n "\$LTE_SCC1_STATE" ] && [ "\$LTE_SCC1_STATE" != "---" ]; then
-    S1BAND="\$(band4g \${LTE_SCC1_STATE/B/})"
-    [ -n "\$LTE_SCC1_MHZ" ] && S1BAND_MHZ="@\${LTE_SCC1_MHZ} MHz"
-    MODE="\${MODE} + \$(band4g \${LTE_SCC1_STATE/B/})"
-fi
-
-# SCC2 LTE
-LTE_SCC2_STATE=$(echo "\$O" | awk -F: '/^LTE SCC2 state:.*ACTIVE/ {print \$3}')
-LTE_SCC2_MHZ=$(echo "\$O" | awk '/^LTE SCC2 bw/ {print \$5}')
-if [ -n "\$LTE_SCC2_STATE" ] && [ "\$LTE_SCC2_STATE" != "---" ]; then
-    S2BAND="\$(band4g \${LTE_SCC2_STATE/B/})"
-    [ -n "\$LTE_SCC2_MHZ" ] && S2BAND_MHZ="@\${LTE_SCC2_MHZ} MHz"
-    MODE="\${MODE} + \$(band4g \${LTE_SCC2_STATE/B/})"
-fi
-
-# SCC3 LTE
-LTE_SCC3_STATE=$(echo "\$O" | awk -F: '/^LTE SCC3 state:.*ACTIVE/ {print \$3}')
-LTE_SCC3_MHZ=$(echo "\$O" | awk '/^LTE SCC3 bw/ {print \$5}')
-if [ -n "\$LTE_SCC3_STATE" ] && [ "\$LTE_SCC3_STATE" != "---" ]; then
-    S3BAND="\$(band4g \${LTE_SCC3_STATE/B/})"
-    [ -n "\$LTE_SCC3_MHZ" ] && S3BAND_MHZ="@\${LTE_SCC3_MHZ} MHz"
-    MODE="\${MODE} + \$(band4g \${LTE_SCC3_STATE/B/})"
-fi
-
-# 5G NR band
-NR5G_BAND_RAW=$(echo "\$O" | awk '/^SCC.*NR5G band:/ {print \$4}' | tr -d '\r\n')
-NR5G_BAND_MHZ=$(echo "\$O" | awk '/^SCC.*NR5G bw:/ {print \$8}' | tr -d '\r\n')
-if [ -n "\$NR5G_BAND_RAW" ] && [ "\$NR5G_BAND_RAW" != "---" ]; then
-    NR5G_BAND="\$(band5g \${NR5G_BAND_RAW/n/})"
-    [ -n "\$NR5G_BAND_MHZ" ] && NR5G_BAND_MHZ="@\${NR5G_BAND_MHZ} MHz"
-    MODE="\${MODE} + \${NR5G_BAND}\${NR5G_BAND_MHZ}"
-fi
-
-# Chuẩn hóa chế độ mạng cuối cùng
-MODE=$(echo "\$MODE" | sed 's/LTE-A/LTE-A |/' | sed 's/ + / + /g')
-
-# SIM and Registration Info
-REG="-"; SSIM="-"; NR_IMEI="-"; NR_IMSI="-"; NR_ICCID="-";
-LAC_DEC="-"; LAC_HEX="-"; CID_DEC="-"; CID_HEX="-";
-
-# CREG
-CREG_INFO=$(echo "\$O" | awk -F[,] '/^\+CREG:/ {print \$0}')
-if [ -n "\$CREG_INFO" ]; then
-    # Use busybox awk for hex conversion if standard awk isn't available on OpenWrt
-    eval $(echo "\$CREG_INFO" | busybox awk -F[,] '{gsub(/[[:space:]"]+/,"");printf "T=\"%d\";LAC_HEX=\"%X\";CID_HEX=\"%X\";LAC_DEC=\"%d\";CID_DEC=\"%d\";MODE_NUM=\"%d\"", \$2, "0x"\$3, "0x"\$4, "0x"\$3, "0x"\$4, \$5}')
-    case "\$T" in
-        0*) REG="Not registered, ME not searching" ;;
-        1*) REG="Registered, home network" ;;
-        2*) REG="Not registered, but ME is currently trying to attach" ;;
-        3*) REG="Registration denied" ;;
-        5*) REG="Registered, roaming" ;;
-        6*) REG="Registered for URC reporting" ;;
-        7*) REG="Registered for NGRC reporting" ;;
-        *) REG="Unknown (\$T)" ;;
-    esac
-fi
-
-# CPIN
-CPIN_INFO=$(echo "\$O" | awk -F[:] '/^\+CPIN:/ {print \$2}' | tr -d '\r\n' | xargs)
-[ "\$CPIN_INFO" = "READY" ] && SSIM="READY" || SSIM="\$CPIN_INFO"
-[ -z "\$SSIM" ] && SSIM="Not available"
-
-# IMEI, IMSI, ICCID
-NR_IMEI=$(echo "\$O" | awk -F: '/^\+GSN:/ {print \$2}' | tr -d '\r\n' | xargs)
-[ -z "\$NR_IMEI" ] && NR_IMEI=$(echo "\$O" | awk '/IMEI:/ {print \$2}' | tr -d '\r\n' | xargs) # Fallback if GSTATUS provides it
-[ -z "\$NR_IMEI" ] && NR_IMEI="-"
-
-NR_IMSI=$(echo "\$O" | awk -F: '/^\+CIMI:/ {print \$2}' | tr -d '\r\n' | xargs)
-[ -z "\$NR_IMSI" ] && NR_IMSI="-"
-
-NR_ICCID=$(echo "\$O" | awk -F: '/^\+ICCID:/ {print \$2}' | tr -d '\r\n' | xargs)
-[ -z "\$NR_ICCID" ] && NR_ICCID=$(echo "\$O" | awk '/ICCID:/ {print \$2}' | tr -d '\r\n' | xargs) # Fallback if GSTATUS provides it
-[ -z "\$NR_ICCID" ] && NR_ICCID="-"
-
-# CSQ
-CSQ=$(echo "\$O" | awk -F[,\ ] '/^\+CSQ:/ {print \$2}')
-[ "x\$CSQ" = "x" ] && CSQ=-1
-if [ \$CSQ -ge 0 -a \$CSQ -le 31 ]; then
-	CSQ_PER=\$(( \$CSQ * 100/31 ))
-else
-	CSQ=""
-	CSQ_PER=""
-fi
-
-# COPS
-COPS=""; COPS_MCC=""; COPS_MNC=""; LOC="-";
-COPS_INFO=$(echo "\$O" | awk -F[,] '/^\+COPS:/ {print \$0}')
-COPS_NUM=$(echo "\$COPS_INFO" | awk -F\" '/^\+COPS: *,2,/ {print \$2}')
-if [ -n "\$COPS_NUM" ]; then
-	COPS_MCC=\${COPS_NUM:0:3}
-	COPS_MNC=\${COPS_NUM:3:3}
-    # Lấy tên nhà mạng và vị trí từ file mccmnc.dat (nếu có)
-    if [ -e "\${RES}/mccmnc.dat" ]; then
-        COPS_NAME_FROM_FILE=\$(awk -F[\;] '/^\${COPS_NUM};/ {print \$3}' \${RES}/mccmnc.dat | xargs)
-        LOC=\$(awk -F[\;] '/^\${COPS_NUM};/ {print \$2}' \${RES}/mccmnc.dat | xargs)
-        [ -n "\$COPS_NAME_FROM_FILE" ] && COPS="\$COPS_NAME_FROM_FILE"
-    fi
-fi
-TCOPS_TEXT=$(echo "\$COPS_INFO" | awk -F\" '/^\+COPS: *,0,/ {print \$2}')
-[ -n "\$TCOPS_TEXT" ] && COPS="\$TCOPS_TEXT" # Ưu tiên tên dạng text từ modem
-[ -z "\$COPS" ] && COPS="\$COPS_NUM" # Fallback nếu tên không có
-
-# --- In JSON Output ---
-cat <<EOF
-{
-"conn_time":"-",
-"conn_time_sec":"-",
-"conn_time_since":"-",
-"rx":"-",
-"tx":"-",
-"modem":"\$(sanitize_string "\$MODEL")",
-"mtemp":"\$(sanitize_string "\$TEMP")",
-"firmware":"\$(sanitize_string "\$FW")",
-"cport":"\$(sanitize_string "\$DEVICE")",
-"protocol":"N/A",
-"csq":"\$(sanitize_number "\$CSQ")",
-"signal":"\$(sanitize_number "\$CSQ_PER")",
-"operator_name":"\$(sanitize_string "\$COPS")",
-"operator_mcc":"\$(sanitize_string "\$COPS_MCC")",
-"operator_mnc":"\$(sanitize_string "\$COPS_MNC")",
-"location":"\$(sanitize_string "\$LOC")",
-"mode":"\$(sanitize_string "\$MODE")",
-"registration":"\$(sanitize_string "\$REG")",
-"simslot":"\$(sanitize_string "\$SSIM")",
-"imei":"\$(sanitize_string "\$NR_IMEI")",
-"imsi":"\$(sanitize_string "\$NR_IMSI")",
-"iccid":"\$(sanitize_string "\$NR_ICCID")",
-"lac_dec":"\$(sanitize_number "\$LAC_DEC")",
-"lac_hex":"\$(sanitize_string "\$LAC_HEX")",
-"tac_dec":"\$(sanitize_number "\$TAC_DEC")",
-"tac_hex":"\$(sanitize_string "\$TAC_HEX")",
-"tac_h":"-",
-"tac_d":"-",
-"cid_dec":"\$(sanitize_number "\$CID_DEC")",
-"cid_hex":"\$(sanitize_string "\$CID_HEX")",
-"pci":"-",
-"earfcn":"-",
-"pband":"\$(sanitize_string "\$PBAND")\$(sanitize_string "\$PBAND_MHZ")",
-"s1band":"\$(sanitize_string "\$S1BAND")\$(sanitize_string "\$S1BAND_MHZ")",
-"s1pci":"-",
-"s1earfcn":"-",
-"s2band":"\$(sanitize_string "\$S2BAND")\$(sanitize_string "\$S2BAND_MHZ")",
-"s2pci":"-",
-"s2earfcn":"-",
-"s3band":"\$(sanitize_string "\$S3BAND")\$(sanitize_string "\$S3BAND_MHZ")",
-"s3pci":"-",
-"s3earfcn":"-",
-"s4band":"-",
-"s4pci":"-",
-"s4earfcn":"-",
-"rsrp":"\$(sanitize_number "\$RSRP")",
-"rsrq":"\$(sanitize_number "\$RSRQ")",
-"rssi":"\$(sanitize_number "\$RSSI")",
-"sinr":"\$(sanitize_number "\$SINR")"
-}
-EOF
-EOF_STATUS_SCRIPT
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể tạo file ${STATUS_SCRIPT}. Thoát."
-    exit 1
-fi
-chmod +x "${STATUS_SCRIPT}"
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể gán quyền thực thi cho ${STATUS_SCRIPT}. Thoát."
-    exit 1
-fi
-
-# --- 3. Tạo file HTML hiển thị (em9190_status.html) ---
-echo ">>> Tạo file HTML hiển thị: ${INDEX_HTML}"
-cat << 'EOF_HTML' > "${INDEX_HTML}"
+# 2. Tạo file HTML chính
+echo "Tạo file HTML chính..."
+cat > "$WEB_DIR/index.html" << 'EOF'
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EM9190 Modem Status</title>
+    <title>EM9190 Monitoring</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 0; color: #333; line-height: 1.6; }
-        .container { max-width: 900px; margin: 30px auto; background-color: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #007bff; text-align: center; margin-bottom: 25px; font-size: 2.2em; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        td, th { border: 1px solid #e0e0e0; padding: 12px 10px; text-align: left; font-size: 1.1em; }
-        th { background-color: #e9ecef; color: #495057; font-weight: 600; }
-        tr:nth-child(even) { background-color: #f8f9fa; }
-        tr:hover { background-color: #e2e6ea; }
-        .key { font-weight: 600; width: 35%; background-color: #f1f3f5; color: #555; }
-        .value { width: 65%; word-break: break-word; }
-        .error { color: #dc3545; font-weight: bold; text-align: center; }
-        .loading { font-style: italic; color: #6c757d; }
-        .loading td { text-align: center; padding: 30px; }
-        .data-row td { padding: 12px 10px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --accent-color: #06b6d4;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+
+            /* Light Mode Variables */
+            --light-bg-primary: #f8fafc;
+            --light-bg-secondary: #e2e8f0;
+            --light-bg-card: #ffffff;
+            --light-text-primary: #0f172a;
+            --light-text-secondary: #475569;
+            --light-text-muted: #64748b;
+            --light-border-color: #cbd5e1;
+            --light-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --light-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --light-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --light-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+            /* Dark Mode Variables */
+            --dark-bg-primary: #0f172a;
+            --dark-bg-secondary: #1e293b;
+            --dark-bg-card: #334155;
+            --dark-text-primary: #f8fafc;
+            --dark-text-secondary: #cbd5e1;
+            --dark-text-muted: #94a3b8;
+            --dark-border-color: #475569;
+            --dark-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --dark-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --dark-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --dark-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+            --shadow-sm: var(--dark-shadow-sm);
+            --shadow-md: var(--dark-shadow-md);
+            --shadow-lg: var(--dark-shadow-lg);
+            --shadow-xl: var(--dark-shadow-xl);
+            
+            --bg-primary: var(--dark-bg-primary);
+            --bg-secondary: var(--dark-bg-secondary);
+            --bg-card: var(--dark-bg-card);
+            --text-primary: var(--dark-text-primary);
+            --text-secondary: var(--dark-text-secondary);
+            --text-muted: var(--dark-text-muted);
+            --border-color: var(--dark-border-color);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: var(--light-bg-primary);
+            --bg-secondary: var(--light-bg-secondary);
+            --bg-card: var(--light-bg-card);
+            --text-primary: var(--light-text-primary);
+            --text-secondary: var(--light-text-secondary);
+            --text-muted: var(--light-text-muted);
+            --border-color: var(--light-border-color);
+            --shadow-sm: var(--light-shadow-sm);
+            --shadow-md: var(--light-shadow-md);
+            --shadow-lg: var(--light-shadow-lg);
+            --shadow-xl: var(--light-shadow-xl);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        [data-theme="light"] body::before {
+             background: 
+                radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 3px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border-radius: 2px;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .status-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-connected {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success-color);
+        }
+        
+        .status-connected::before {
+            background: var(--success-color);
+        }
+        
+        .status-disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--error-color);
+        }
+        
+        .status-disconnected::before {
+            background: var(--error-color);
+        }
+        
+        .status-loading {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning-color);
+        }
+        
+        .status-loading::before {
+            background: var(--warning-color);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-xl);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        
+        .card h3 {
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .card h3::before {
+            content: attr(data-icon);
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.3); /* Placeholder, will adjust for theme */
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05); /* Placeholder, will adjust for theme */
+            transition: all 0.3s ease;
+        }
+
+        [data-theme="light"] .info-row {
+            background: rgba(226, 232, 240, 0.5); /* Light theme background */
+            border-color: rgba(201, 203, 208, 0.3); /* Light theme border */
+        }
+
+        .info-row:hover {
+            background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        [data-theme="light"] .info-row:hover {
+            background: rgba(226, 232, 240, 0.7); /* Light theme hover background */
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+        
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .info-label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .info-value {
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 500;
+            text-align: right;
+        }
+        
+        .signal-bars {
+            display: flex;
+            align-items: end;
+            gap: 4px;
+            height: 30px;
+        }
+        
+        .signal-bar {
+            width: 10px;
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 3px;
+            transition: all 0.3s ease;
+        }
+        
+        .signal-bar:nth-child(1) { height: 6px; }
+        .signal-bar:nth-child(2) { height: 12px; }
+        .signal-bar:nth-child(3) { height: 18px; }
+        .signal-bar:nth-child(4) { height: 24px; }
+        .signal-bar:nth-child(5) { height: 30px; }
+        
+        .signal-bar.active {
+            background: linear-gradient(135deg, var(--success-color), var(--accent-color));
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .signal-strength {
+            margin-left: 1rem;
+            font-weight: 600;
+            color: var(--success-color);
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-md);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .refresh-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .refresh-btn:hover::before {
+            left: 100%;
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+        
+        .band-info {
+            background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin: 0.25rem 0;
+            font-family: 'JetBrains Mono', monospace;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            font-size: 0.875rem;
+        }
+
+        [data-theme="light"] .band-info {
+            background: rgba(226, 232, 240, 0.5); /* Light theme background */
+            border-color: rgba(99, 102, 241, 0.15); /* Light theme border */
+        }
+        
+        .mode-5g {
+            color: var(--error-color);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        
+        .mode-lte {
+            color: var(--accent-color);
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+        
+        /* --- Phần TỰ ĐỘNG LÀM MỚI ĐÃ BỊ ẨN --- */
+        .auto-refresh {
+            display: none !important; /* Ẩn vĩnh viễn */
+            /* Các thuộc tính định vị khác không còn cần thiết nữa */
+        }
+        /* ------------------------------------------ */
+
+        /* --- Điều chỉnh vị trí của theme-toggle --- */
+        .theme-toggle {
+            position: fixed;
+            top: 2rem;
+            right: 2rem; /* Đặt chế độ tối ở góc phải nhất */
+            background: var(--bg-card); /* Adjust for theme */
+            backdrop-filter: blur(10px);
+            padding: 0.75rem 0.8rem; /* Điều chỉnh padding */
+            border-radius: 15px;
+            border: 1px solid var(--border-color); /* Adjust for theme */
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            cursor: pointer;
+            display: flex; /* Sử dụng flexbox */
+            align-items: center; /* Căn giữa theo chiều dọc */
+            gap: 0.4rem; /* Giảm khoảng cách */
+            transition: all 0.3s ease;
+            white-space: nowrap; /* Quan trọng: Ngăn chữ bị xuống dòng */
+        }
+
+        [data-theme="light"] .theme-toggle {
+            background: rgba(255, 255, 255, 0.8);
+            border-color: var(--light-border-color);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .theme-toggle .icon {
+            font-size: 1.2rem;
+            flex-shrink: 0; /* Ngăn icon bị co lại */
+        }
+
+        /* Nếu có một phần tử bao bọc cho icon và chữ, hãy đảm bảo nó cũng xử lý như flex */
+        .theme-toggle > div {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+        
+        /* --- Responsive Design --- */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            
+            .card {
+                padding: 1.5rem;
+            }
+            
+            /* --- Điều chỉnh cho màn hình nhỏ --- */
+            /* Các phần tử auto-refresh và theme-toggle sẽ ở chế độ static */
+            .auto-refresh, .theme-toggle {
+                position: static; /* Hủy bỏ position: fixed */
+                margin-left: auto;  /* Căn giữa */
+                margin-right: auto; /* Căn giữa */
+                margin-bottom: 2rem; /* Thêm khoảng cách bên dưới */
+                max-width: 300px; /* Giới hạn chiều rộng */
+                padding-left: 1rem; /* Thêm đệm hai bên */
+                padding-right: 1rem;
+                flex-wrap: wrap; /* Cho phép các item xuống dòng */
+                justify-content: center; /* Căn giữa nội dung bên trong flex container */
+            }
+            
+            /* Điều chỉnh riêng cho theme-toggle trên màn hình nhỏ */
+            .theme-toggle {
+                 margin-top: 1rem; /* Khoảng cách bên trên */
+            }
+
+            /* Đảm bảo cả hai đều hoạt động tốt khi stack */
+            .auto-refresh {
+                margin-bottom: 1rem; /* Giảm khoảng cách dưới auto-refresh khi stack */
+            }
+
+            /* Có thể cần điều chỉnh lại z-index hoặc display nếu stack bị chồng */
+            .auto-refresh, .theme-toggle {
+                z-index: 1000; /* Đảm bảo chúng ở trên các phần tử khác */
+                display: flex;
+                justify-content: center; /* Căn giữa nội dung bên trong */
+            }
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .card {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.3s; }
+        .card:nth-child(4) { animation-delay: 0.4s; }
+        .card:nth-child(5) { animation-delay: 0.5s; }
+        .card:nth-child(6) { animation-delay: 0.6s; }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-color);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary-color);
+        }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Sierra Wireless EM9190 Modem Status</h1>
-        <table id="statusTable">
-            <thead>
-                <tr>
-                    <th class="key">Parameter</th>
-                    <th class="value">Value</th>
-                </tr>
-            </thead>
-            <tbody id="statusTableBody">
-                <tr class="loading"><td colspan="2">Loading modem status...</td></tr>
-            </tbody>
-        </table>
+<body data-theme="dark">
+    <div class="auto-refresh">
+        <label>
+            <input type="checkbox" id="autoRefresh" checked>
+            Tự động làm mới (60s)
+        </label>
+        <div class="retry-count" id="retryCount">Lần thử: 0</div>
+        <div class="countdown-timer" id="countdownTimer">Làm mới sau: 60s</div>
     </div>
 
+    <div class="theme-toggle" id="themeToggle">
+        <span class="icon">🌙</span>
+        <span>Chế độ tối</span>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>Sierra Wireless EM9190</h1>
+            <div id="statusBadge" class="status-badge status-loading">Đang tải...</div>
+        </div>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3 data-icon="📡">Thông tin kết nối</h3>
+                <div class="info-row">
+                    <span class="info-label">Nhà mạng:</span>
+                    <span class="info-value" id="operator">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">MCC-MNC:</span>
+                    <span class="info-value" id="mccmnc">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Vị trí:</span>
+                    <span class="info-value" id="location">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Chế độ:</span>
+                    <span class="info-value" id="mode">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Trạng thái:</span>
+                    <span class="info-value" id="registration">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Thời gian kết nối:</span>
+                    <span class="info-value" id="connTime">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">IP WAN:</span>
+                    <span class="info-value" id="ipWan">Đang cập nhập</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 data-icon="📱">Thông tin thiết bị</h3>
+                <div class="info-row">
+                    <span class="info-label">Model:</span>
+                    <span class="info-value" id="model">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Firmware:</span>
+                    <span class="info-value" id="firmware">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Nhiệt độ:</span>
+                    <span class="info-value" id="temp">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">IMEI:</span>
+                    <span class="info-value" id="imei">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Port:</span>
+                    <span class="info-value" id="port">-</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 data-icon="📶">Cường độ tín hiệu</h3>
+                <div class="info-row">
+                    <span class="info-label">Tín hiệu:</span>
+                    <span class="info-value">
+                        <div style="display: flex; align-items: center;">
+                            <div class="signal-bars" id="signalBars">
+                                <div class="signal-bar"></div>
+                                <div class="signal-bar"></div>
+                                <div class="signal-bar"></div>
+                                <div class="signal-bar"></div>
+                                <div class="signal-bar"></div>
+                            </div>
+                            <span class="signal-strength" id="signalPercent">-</span>
+                        </div>
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">CSQ:</span>
+                    <span class="info-value" id="csq">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">RSRP:</span>
+                    <span class="info-value" id="rsrp">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">RSRQ:</span>
+                    <span class="info-value" id="rsrq">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">RSSI:</span>
+                    <span class="info-value" id="rssi">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">SINR:</span>
+                    <span class="info-value" id="sinr">-</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 data-icon="📡">Band tần</h3>
+                <div class="info-row">
+                    <span class="info-label">Band chính:</span>
+                    <div class="band-info" id="pband">-</div>
+                </div>
+                <div class="info-row" id="s1bandRow" style="display: none;">
+                    <span class="info-label">Band phụ 1:</span>
+                    <div class="band-info" id="s1band">-</div>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">EARFCN:</span>
+                    <span class="info-value" id="earfcn">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">PCI:</span>
+                    <span class="info-value" id="pci">-</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 data-icon="📊">Dữ liệu</h3>
+                <div class="info-row">
+                    <span class="info-label">Dữ liệu nhận:</span>
+                    <span class="info-value" id="rxData">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Dữ liệu gửi:</span>
+                    <span class="info-value" id="txData">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">LAC:</span>
+                    <span class="info-value" id="lac">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">CID:</span>
+                    <span class="info-value" id="cid">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">TAC:</span>
+                    <span class="info-value" id="tac">-</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 data-icon="💳">Thông tin SIM</h3>
+                <div class="info-row">
+                    <span class="info-label">IMSI:</span>
+                    <span class="info-value" id="imsi">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">ICCID:</span>
+                    <span class="info-value" id="iccid">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Protocol:</span>
+                    <span class="info-value" id="protocol">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="button-container">
+            <button class="refresh-btn" onclick="loadData()">🔄 Làm mới</button>
+        </div>
+    </div>
+    
     <script>
-        function updateStatus() {
-            // Sử dụng path tuyệt đối vì get_em9190_status.sh không nằm trong thư mục web
-            // mà được map bởi uhttpd dispatch
-            fetch('/get_em9190_status.sh') 
+        let autoRefreshInterval;
+        let countdownInterval;
+        let retryCount = 0;
+        let maxRetries = 5;
+        let countdown = 60;
+        
+        const themeToggle = document.getElementById('themeToggle');
+        const body = document.body;
+
+        // Function to set the theme
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            const icon = theme === 'dark' ? '☀️' : '🌙';
+            const text = theme === 'dark' ? 'Chế độ sáng' : 'Chế độ tối';
+            themeToggle.querySelector('.icon').textContent = icon;
+            themeToggle.querySelector('span:last-child').textContent = text;
+        }
+
+        // Function to toggle between themes
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+        }
+
+        // Event listener for theme toggle
+        themeToggle.addEventListener('click', toggleTheme);
+
+        // Initialize theme from local storage or default to dark
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            setTheme(savedTheme);
+        } else {
+            setTheme('dark'); // Default to dark mode
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === '-' || bytes === '' || bytes === null) return '-';
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            if (bytes === 0) return '0 B';
+            const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+            return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        function updateSignalBars(percent) {
+            const bars = document.querySelectorAll('.signal-bar');
+            const activeCount = Math.ceil(percent / 20);
+            
+            bars.forEach((bar, index) => {
+                if (index < activeCount) {
+                    bar.classList.add('active');
+                } else {
+                    bar.classList.remove('active');
+                }
+            });
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+        
+        function updateCountdown() {
+            const countdownElement = document.getElementById('countdownTimer');
+            if (countdown > 0) {
+                countdownElement.textContent = `Làm mới sau: ${countdown}s`;
+                countdown--;
+            } else {
+                countdownElement.textContent = 'Đang làm mới...';
+                countdown = 60;
+            }
+        }
+        
+        function startCountdown() {
+            countdown = 60;
+            updateCountdown();
+            countdownInterval = setInterval(updateCountdown, 1000);
+        }
+        
+        function stopCountdown() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            document.getElementById('countdownTimer').textContent = 'Tắt tự động làm mới';
+        }
+        
+        function loadData() {
+            document.getElementById('statusBadge').textContent = 'Đang tải...';
+            document.getElementById('statusBadge').className = 'status-badge status-loading';
+            
+            // Reset countdown when manually refreshing
+            if (document.getElementById('autoRefresh').checked) {
+                countdown = 60;
+                document.getElementById('countdownTimer').textContent = 'Làm mới sau: 60s';
+            }
+            
+            fetch('/cgi-bin/em9190-info')
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error('HTTP ' + response.status);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    const tableBody = document.getElementById('statusTableBody');
-                    tableBody.innerHTML = ''; // Xóa nội dung cũ
-
+                    retryCount = 0;
+                    document.getElementById('retryCount').textContent = 'Lần thử: 0';
+                    
                     if (data.error) {
-                        tableBody.innerHTML = `<tr><td colspan="2" class="error">${data.error}</td></tr>`;
+                        showError('Lỗi: ' + data.error);
                         return;
                     }
+                    
+                    // Update status
+                    const statusBadge = document.getElementById('statusBadge');
 
-                    // Định nghĩa thứ tự hiển thị và tên thân thiện
-                    const displayOrder = [
-                        { id: "modem", name: "Modem Model" },
-                        { id: "firmware", name: "Firmware" },
-                        { id: "mtemp", name: "Temperature" },
-                        { id: "cport", name: "Device Port" },
-                        { id: "protocol", name: "Protocol" },
-                        { id: "simslot", name: "SIM Status" },
-                        { id: "imei", name: "IMEI" },
-                        { id: "imsi", name: "IMSI" },
-                        { id: "iccid", name: "ICCID" },
-                        { id: "csq", name: "Signal (CSQ)" },
-                        { id: "signal", name: "Signal (%)" },
-                        { id: "operator_name", name: "Operator Name" },
-                        { id: "operator_mcc", name: "MCC" },
-                        { id: "operator_mnc", name: "MNC" },
-                        { id: "location", name: "Location" },
-                        { id: "mode", name: "Network Mode" },
-                        { id: "registration", name: "Registration" },
-                        { id: "tac_dec", name: "TAC (Decimal)" },
-                        { id: "tac_hex", name: "TAC (Hex)" },
-                        { id: "lac_dec", name: "LAC (Decimal)" },
-                        { id: "lac_hex", name: "LAC (Hex)" },
-                        { id: "cid_dec", name: "CID (Decimal)" },
-                        { id: "cid_hex", name: "CID (Hex)" },
-                        { id: "pband", name: "Primary Band" },
-                        { id: "rsrp", name: "RSRP (dBm)" },
-                        { id: "rsrq", name: "RSRQ (dB)" },
-                        { id: "rssi", name: "RSSI (dBm)" },
-                        { id: "sinr", name: "SINR (dB)" },
-                        { id: "s1band", name: "Secondary Band 1" },
-                        { id: "s2band", name: "Secondary Band 2" },
-                        { id: "s3band", name: "Secondary Band 3" },
-                        // Thêm các trường khác nếu cần thiết và có trong JSON output
-                    ];
-
-                    displayOrder.forEach(param => {
-                        const value = data[param.id];
-                        const displayValue = (value === "" || value === "-" || value === null) ? "-" : value;
-
-                        const tr = document.createElement('tr');
-                        tr.className = 'data-row';
-                        tr.innerHTML = `
-                            <td class="key">${param.name}</td>
-                            <td class="value">${displayValue}</td>
-                        `;
-                        tableBody.appendChild(tr);
-                    });
+                    if (data.ip_wan && data.ip_wan !== '-' && data.status === 'connected') {
+                        statusBadge.textContent = 'Đã kết nối';
+                        statusBadge.className = 'status-badge status-connected';
+                    } else if (data.registration === '5') {
+                        statusBadge.textContent = 'Roaming';
+                        statusBadge.className = 'status-badge status-connected';
+                    } else {
+                        statusBadge.textContent = 'Mất kết nối';
+                        statusBadge.className = 'status-badge status-disconnected';
+                    }
+                    
+                    // Update all fields
+                    document.getElementById('operator').textContent = data.operator_name || '-';
+                    document.getElementById('mccmnc').textContent = data.operator_mcc && data.operator_mnc ? data.operator_mcc + '-' + data.operator_mnc : '-';
+                    document.getElementById('location').textContent = data.location || '-';
+                    
+                    const modeElement = document.getElementById('mode');
+                    const mode = data.mode || '-';
+                    modeElement.innerHTML = mode.includes('5G') ? 
+                        '<span class="mode-5g">' + mode + '</span>' : 
+                        '<span class="mode-lte">' + mode + '</span>';
+                    
+                    const regText = data.registration === '1' ? 'Đã đăng ký' : 
+                                   data.registration === '5' ? 'Roaming' : 
+                                   data.registration === '0' ? 'Không đăng ký' : 
+                                   data.registration === '2' ? 'Đang tìm' : 'Không xác định';
+                    document.getElementById('registration').textContent = regText;
+                    
+                    document.getElementById('connTime').textContent = data.conn_time || '-';
+                    document.getElementById('ipWan').textContent = data.ip_wan || '-';
+                    document.getElementById('model').textContent = data.modem || '-';
+                    document.getElementById('firmware').textContent = data.firmware || '-';
+                    document.getElementById('temp').textContent = data.mtemp || '-';
+                    document.getElementById('imei').textContent = data.imei || '-';
+                    document.getElementById('port').textContent = data.cport || '-';
+                    
+                    // Signal
+                    const signalPercent = data.signal || 0;
+                    document.getElementById('signalPercent').textContent = signalPercent + '%';
+                    updateSignalBars(signalPercent);
+                    
+                    document.getElementById('csq').textContent = data.csq || '-';
+                    document.getElementById('rsrp').textContent = data.rsrp ? data.rsrp + ' dBm' : '-';
+                    document.getElementById('rsrq').textContent = data.rsrq ? data.rsrq + ' dB' : '-';
+                    document.getElementById('rssi').textContent = data.rssi ? data.rssi + ' dBm' : '-';
+                    document.getElementById('sinr').textContent = data.sinr ? data.sinr + ' dB' : '-';
+                    
+                    // Bands
+                    document.getElementById('pband').textContent = data.pband || '-';
+                    document.getElementById('earfcn').textContent = data.earfcn || '-';
+                    document.getElementById('pci').textContent = data.pci || '-';
+                    
+                    const s1bandRow = document.getElementById('s1bandRow');
+                    if (data.s1band && data.s1band !== '-') {
+                        s1bandRow.style.display = 'flex';
+                        document.getElementById('s1band').textContent = data.s1band;
+                    } else {
+                        s1bandRow.style.display = 'none';
+                    }
+                    
+                    // Data
+                    document.getElementById('rxData').textContent = formatBytes(data.rx);
+                    document.getElementById('txData').textContent = formatBytes(data.tx);
+                    document.getElementById('lac').textContent = data.lac_dec && data.lac_hex ? data.lac_dec + ' (0x' + data.lac_hex + ')' : '-';
+                    document.getElementById('cid').textContent = data.cid_dec && data.cid_hex ? data.cid_dec + ' (0x' + data.cid_hex + ')' : '-';
+                    document.getElementById('tac').textContent = data.tac_d && data.tac_h ? data.tac_d + ' (0x' + data.tac_h + ')' : '-';
+                    
+                    // SIM
+                    document.getElementById('imsi').textContent = data.imsi || '-';
+                    document.getElementById('iccid').textContent = data.iccid || '-';
+                    document.getElementById('protocol').textContent = data.protocol || '-';
                 })
                 .catch(error => {
-                    const tableBody = document.getElementById('statusTableBody');
-                    tableBody.innerHTML = `<tr><td colspan="2" class="error">Failed to load status. Check network, modem connection, or script. Error: ${error}</td></tr>`;
-                    console.error('Error fetching status:', error);
+                    console.error('Error:', error);
+                    retryCount++;
+                    document.getElementById('retryCount').textContent = 'Lần thử: ' + retryCount;
+                    
+                    if (retryCount >= maxRetries) {
+                        document.getElementById('statusBadge').textContent = 'Lỗi kết nối';
+                        document.getElementById('statusBadge').className = 'status-badge status-disconnected';
+                        showError('Không thể kết nối sau ' + maxRetries + ' lần thử');
+                        stopCountdown(); // Stop countdown if max retries reached
+                    } else {
+                        document.getElementById('statusBadge').textContent = 'Đang thử lại...';
+                        document.getElementById('statusBadge').className = 'status-badge status-loading';
+                        setTimeout(loadData, 2000);
+                    }
                 });
         }
-
-        // Cập nhật trạng thái mỗi 15 giây
-        updateStatus();
-        setInterval(updateStatus, 15000); // 15000 milliseconds = 15 seconds
+        
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(loadData, 60000); // 60 seconds
+                startCountdown();
+            } else {
+                clearInterval(autoRefreshInterval);
+                stopCountdown();
+            }
+        }
+        
+        document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
+        
+        // Manual refresh button resets countdown
+        document.querySelector('.refresh-btn').addEventListener('click', function() {
+            if (document.getElementById('autoRefresh').checked) {
+                clearInterval(countdownInterval);
+                startCountdown();
+            }
+        });
+        
+        // Initial load
+        loadData();
+        toggleAutoRefresh();
     </script>
 </body>
 </html>
-EOF_HTML
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể tạo file ${INDEX_HTML}. Thoát."
-    exit 1
+EOF
+
+# 3. Tạo CGI script
+echo "Tạo CGI script..."
+cat > "$CGI_DIR/em9190-info" << 'EOF'
+#!/bin/sh
+
+echo "Content-Type: application/json"
+echo ""
+
+DEVICE="/dev/ttyUSB0"
+
+# ==== HÀM PHỤ ====
+
+get_at_response() {
+    CMD="$1"
+    FILTER="$2"
+    sms_tool -d "$DEVICE" at "$CMD" > /tmp/at_resp.txt 2>/dev/null
+    grep "$FILTER" /tmp/at_resp.txt | tail -1
+}
+
+get_single_line_value() {
+    CMD="$1"
+    sms_tool -d "$DEVICE" at "$CMD" 2>/dev/null | grep -vE '^(AT|\s*OK|\s*$)' | head -1 | tr -d '\r\n '
+}
+
+get_imsi() {
+    get_single_line_value "AT+CIMI"
+}
+
+get_iccid() {
+    sms_tool -d "$DEVICE" at "AT+ICCID" 2>/dev/null | grep -i "ICCID" | awk -F: '{print $2}' | tr -d '\r\n "'
+}
+
+sanitize_string() {
+    [ -z "$1" ] && echo "-" || echo "$1" | tr -d '\r\n'
+}
+
+sanitize_number() {
+    [ -z "$1" ] && echo "-" || echo "$1"
+}
+
+get_connection_status() {
+    IFACE=$(ip route | awk '/default/ {print $5}' | head -1)
+    WAN_IP=$(ip addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -1)
+    if [ -z "$WAN_IP" ] || echo "$WAN_IP" | grep -qE '^(0\.0\.0\.0|169\.)'; then
+        echo "disconnected"
+    else
+        echo "connected"
+    fi
+}
+
+# ==== GSTATUS CHÍNH ====
+O=$(sms_tool -d "$DEVICE" at "AT!GSTATUS?" 2>/dev/null)
+
+# ==== THÔNG TIN MODEM ====
+MODEL=$(sms_tool -d "$DEVICE" at "AT+CGMM" 2>/dev/null | grep -v -e '^AT' -e '^OK' -e '^$' | head -n1 | tr -d '\r\n')
+FW=$(sms_tool -d "$DEVICE" at "AT+CGMR" 2>/dev/null | grep -v -e '^AT' -e '^OK' -e '^$' | head -n1 | tr -d '\r\n')
+IMEI=$(sanitize_string "$(get_single_line_value 'AT+CGSN')")
+IMSI=$(sanitize_string "$(get_imsi)")
+ICCID=$(sanitize_string "$(get_iccid)")
+
+
+# ==== NHIỆT ĐỘ, MODE ====
+TEMP=$(echo "$O" | awk -F: '/Temperature:/ {print $3}' | xargs)
+SYS_MODE=$(echo "$O" | awk '/^System mode:/ {print $3}')
+case "$SYS_MODE" in
+    "LTE") MODE="LTE" ;;
+    "ENDC") MODE="5G NSA" ;;
+    *) MODE="-" ;;
+esac
+
+# ==== TAC ====
+TAC_HEX=$(echo "$O" | awk '/.*TAC:/ {print $6}')
+[ -n "$TAC_HEX" ] && TAC_DEC=$(printf "%d" "0x$TAC_HEX")
+
+# ==== CID, LAC, PCI ====
+CID_HEX=$(echo "$O" | awk '/.*TAC:/ {gsub(/[()]/, "", $7); print $7}' )
+[ -n "$CID_HEX" ] && CID_DEC=$(printf "%d" "0x$CID_HEX")
+PCI=$(echo "$O" | awk '/.*TAC:/ {print $8}' | sed 's/[,)]//g')
+
+# ==== TÍN HIỆU ====
+RSRP=$(echo "$O" | awk '/^PCC/ && /RSRP/ {print $8}' | head -1 | xargs)
+RSSI=$(echo "$O" | awk '/^PCC/ && /RSSI/ {print $4}' | head -1 | xargs)
+RSRQ=$(echo "$O" | grep "^RSRQ" | awk '{print $3}')
+SINR=$(echo "$O" | grep "^SINR" | awk '{print $3}')
+[ -z "$RSRQ" ] && RSRQ="-"
+[ -z "$SINR" ] && SINR="-"
+
+
+# ==== BĂNG TẦN CHÍNH ====
+BAND=$(echo "$O" | awk '/^LTE band:/ {print $3}')
+FREQ=$(echo "$O" | awk '/^LTE band:/ {print $6}')
+PBAND="B${BAND/B/} @${FREQ} MHz"
+MODE="$MODE B${BAND/B/}"
+
+# ==== SCC BANDS ====
+get_band_string() {
+    echo -n "B$1"
+    case "$1" in
+        "1") echo -n " (2100 MHz)";;
+        "3") echo -n " (1800 MHz)";;
+        "7") echo -n " (2600 MHz)";;
+        "8") echo -n " (900 MHz)";;
+        "20") echo -n " (800 MHz)";;
+        "28") echo -n " (700 MHz)";;
+        "40") echo -n " (2300 MHz)";;
+        *) echo -n "";;
+    esac
+}
+
+get_scc_band() {
+    SCC_NO="$1"
+    ACTIVE=$(echo "$O" | awk -F: "/^LTE SCC${SCC_NO} state:.*ACTIVE/ {print \$3}")
+    if [ -n "$ACTIVE" ]; then
+        BW=$(echo "$O" | awk "/^LTE SCC${SCC_NO} bw/ {print \$5}")
+        BSTR="B${ACTIVE/B/}"
+        MODE="${MODE/LTE/LTE-A} + $BSTR"
+        echo "$(get_band_string ${ACTIVE/B/}) @$BW MHz"
+    else
+        echo "-"
+    fi
+}
+
+S1BAND=$(get_scc_band 1)
+S2BAND=$(get_scc_band 2)
+S3BAND=$(get_scc_band 3)
+
+# ==== 5G NR ====
+NRBAND=$(echo "$O" | awk '/^SCC. NR5G band:/ {print $4}')
+if [ -n "$NRBAND" ] && [ "$NRBAND" != "---" ]; then
+    MODE="$MODE + n${NRBAND/n/}"
+    NR_RSRP=$(echo "$O" | awk '/SCC. NR5G RSRP:/ {print $4}')
+    NR_RSRQ=$(echo "$O" | awk '/SCC. NR5G RSRQ:/ {print $4}')
+    NR_SINR=$(echo "$O" | awk '/SCC. NR5G SINR:/ {print $4}')
+    [ -n "$NR_RSRP" ] && RSRP="$NR_RSRP"
+    [ -n "$NR_RSRQ" ] && RSRQ="$NR_RSRQ"
+    [ -n "$NR_SINR" ] && SINR="$NR_SINR"
 fi
 
-# --- 4. Cấu hình uhttpd ---
-echo ">>> Cấu hình uhttpd để phục vụ trên port ${UHTTPD_PORT}..."
-
-# Xóa cấu hình cũ theo tên (nếu có) để đảm bảo sạch sẽ
-uci -q delete uhttpd."${UHTTPD_CONFIG_SECTION}"
-
-# Thêm cấu hình mới và bắt lấy ID của section vừa tạo (anonymous)
-# Sau đó đổi tên cho nó để tham chiếu dễ dàng hơn
-NEW_SECTION_ID=$(uci add uhttpd)
-if [ -z "${NEW_SECTION_ID}" ]; then
-    echo "!!! Lỗi: Không thể thêm section uhttpd mới. Thoát."
-    exit 1
+# ==== CSQ ====
+CSQ_LINE=$(get_at_response "AT+CSQ" "+CSQ")
+CSQ=$(echo "$CSQ_LINE" | awk -F: '{print $2}' | awk -F, '{print $1}' | tr -d ' ')
+if [ -n "$CSQ" ] && [ "$CSQ" -ne 99 ]; then
+    CSQ_PER=$(expr $CSQ \* 100 / 31)
+else
+    CSQ="0"
+    CSQ_PER="0"
 fi
-uci rename uhttpd."${NEW_SECTION_ID}"="${UHTTPD_CONFIG_SECTION}"
 
-# Bây giờ, cấu hình các tùy chọn cho section vừa tạo bằng tên đã đổi
-uci set uhttpd."${UHTTPD_CONFIG_SECTION}".enabled='1'
-uci set uhttpd."${UHTTPD_CONFIG_SECTION}".listen_port="${UHTTPD_PORT}"
-uci set uhttpd."${UHTTPD_CONFIG_SECTION}".home="${WEB_DIR}" # WEB_DIR cho HTML
-uci set uhttpd."${UHTTPD_CONFIG_SECTION}".index="${INDEX_HTML_NAME}"
+# ==== COPS (lấy MCC/MNC đúng) ====
+sms_tool -d "$DEVICE" at "AT+COPS=3,2" > /dev/null 2>&1
+COPS_LINE=$(get_at_response "AT+COPS?" "+COPS")
+COPS_NUM=$(echo "$COPS_LINE" | grep -oE '[0-9]{5,6}' | head -1)
 
-# Cấu hình dispatch để map URL ảo /get_em9190_status.sh đến script vật lý
-# Điều này cho phép JS trong HTML gọi script này
-uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".dispatch="/${STATUS_SCRIPT_NAME}=${STATUS_SCRIPT}"
+case "$COPS_NUM" in
+    "45202") COPS="Vinaphone";;
+    "45201") COPS="Mobifone";;
+    "45204") COPS="Viettel";;
+    *)       COPS="Unknown";;
+esac
 
-# Thêm interpreter cho shell script để uhttpd có thể thực thi nó
-uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/usr/bin/sh'
-uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/bin/ash'
+COPS_MCC=$(echo "$COPS_NUM" | cut -c1-3)
+COPS_MNC=$(echo "$COPS_NUM" | cut -c4-)
 
-uci commit uhttpd
-echo ">>> Cấu hình uhttpd đã được thêm/cập nhật."
+# ==== CREG ====
+CREG_LINE=$(get_at_response "AT+CREG?" "+CREG")
+REG_STATUS=$(echo "$CREG_LINE" | awk -F, '{print $2}' | tr -d ' ')
 
-# --- 5. Khởi động lại uhttpd ---
-echo ">>> Khởi động lại dịch vụ uhttpd..."
+# ==== EARFCN ====
+EARFCN=$(echo "$O" | awk '/^LTE Rx chan:/ {print $4}')
+
+# ==== PROTOCOL ====
+PROTO_INFO=$(awk '/Vendor=1199 ProdID=90d3/{f=1} f && /Driver=/{print; f=0}' /sys/kernel/debug/usb/devices 2>/dev/null)
+case "$PROTO_INFO" in
+    *qmi_wwan*) PROTO="qmi";;
+    *cdc_mbim*) PROTO="mbim";;
+    *cdc_ether*) PROTO="ecm";;
+    *) PROTO="qmi";;
+esac
+
+# ==== RX/TX, IP, STATUS ====
+# --- Rx/Tx + IP ---
+IFACE=$(ip route | awk '/default/ {print $5}' | head -1)
+RX_BYTES=$(cat /sys/class/net/$IFACE/statistics/rx_bytes 2>/dev/null || echo "0")
+TX_BYTES=$(cat /sys/class/net/$IFACE/statistics/tx_bytes 2>/dev/null || echo "0")
+UPTIME=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+CONN_TIME=$(printf "%02d:%02d:%02d" $((UPTIME/3600)) $((UPTIME%3600/60)) $((UPTIME%60)))
+
+# --- Kiểm tra trạng thái kết nối WAN ---
+IP_WAN=$(ip addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2}' | cut -d'/' -f1 | grep -v '^127' | head -n1)
+if [ -n "$IP_WAN" ]; then
+    STATUS="connected"
+else
+    STATUS="disconnected"
+    IP_WAN="-"
+fi
+
+
+# ==== IN JSON ====
+cat << JSONEOF
+{
+    "conn_time": "$(sanitize_string "$CONN_TIME")",
+    "rx": "$(sanitize_number "$RX_BYTES")",
+    "tx": "$(sanitize_number "$TX_BYTES")",
+    "status": "$(sanitize_string "$STATUS")",
+    "ip_wan": "$(sanitize_string "$IP_WAN")",
+    "modem": "Sierra Wireless AirPrime EM9190 5G NR",
+    "mtemp": "$(sanitize_string "$TEMP")",
+    "firmware": "SWIX55C_03.10.07.00",
+    "cport": "$(sanitize_string "$DEVICE")",
+    "protocol": "$(sanitize_string "$PROTO")",
+    "csq": "$(sanitize_number "$CSQ")",
+    "signal": "$(sanitize_number "$CSQ_PER")",
+    "operator_name": "$(sanitize_string "$COPS")",
+    "operator_mcc": "$(sanitize_string "$COPS_MCC")",
+    "operator_mnc": "$(sanitize_string "$COPS_MNC")",
+    "location": "Việt Nam",
+    "mode": "$(sanitize_string "$MODE")",
+    "registration": "$(sanitize_string "$REG_STATUS")",
+    "imei": "$(sanitize_string "$IMEI")",
+    "imsi": "$(sanitize_string "$IMSI")",
+    "iccid": "$(sanitize_string "$ICCID")",
+    "lac_dec": "$(sanitize_number "$TAC_DEC")",
+    "lac_hex": "$(sanitize_string "$TAC_HEX")",
+    "cid_dec": "$(sanitize_number "$CID_DEC")",
+    "cid_hex": "$(sanitize_string "$CID_HEX")",
+    "pci": "$(sanitize_number "$PCI")",
+    "earfcn": "$(sanitize_number "$EARFCN")",
+    "pband": "$(sanitize_string "$PBAND")",
+    "s1band": "$(sanitize_string "$S1BAND")",
+    "s2band": "$(sanitize_string "$S2BAND")",
+    "s3band": "$(sanitize_string "$S3BAND")",
+    "rsrp": "$(sanitize_number "$RSRP")",
+    "rsrq": "$(sanitize_number "$RSRQ")",
+    "rssi": "$(sanitize_number "$RSSI")",
+    "sinr": "$(sanitize_number "$SINR")"
+}
+JSONEOF
+
+EOF
+
+# 4. Cấp quyền thực thi cho CGI
+echo "Cấp quyền thực thi cho CGI..."
+chmod +x "$CGI_DIR/em9190-info"
+
+# 5. Cấu hình uhttpd
+echo "Cấu hình uhttpd..."
+
+# Backup config gốc
+cp "$UHTTPD_CONFIG" "$UHTTPD_CONFIG.backup"
+
+# Thêm config mới
+cat >> "$UHTTPD_CONFIG" << EOF
+
+config uhttpd 'em9190'
+	option home '/www/em9190'
+	option cgi_prefix '/cgi-bin'
+	list listen_http '0.0.0.0:$PORT'
+	list listen_http '[::]:$PORT'
+	option redirect_https '0'
+	option rfc1918_filter '0'
+	option max_requests '10'
+	option max_connections '100'
+	option tcp_keepalive '1'
+	option ubus_prefix '/ubus'
+	option index_file 'index.html'
+	option error_page '/error.html'
+	option script_timeout '60'
+	option network_timeout '30'
+	option http_keepalive '20'
+	option tcp_keepalive '1'
+EOF
+
+# 6. Khởi động dịch vụ
+echo "Khởi động dịch vụ uhttpd..."
 /etc/init.d/uhttpd restart
-if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể khởi động lại uhttpd. Hãy thử thủ công bằng '/etc/init.d/uhttpd restart'."
-    echo "!!! Kiểm tra file log của uhttpd để biết thêm chi tiết lỗi."
+
+# 7. Kiểm tra và hiển thị kết quả
+echo ""
+echo "=== Cài đặt hoàn tất ==="
+echo ""
+echo "Thông tin truy cập:"
+echo "- URL: http://$(ip route get 1 | awk '{print $NF;exit}'):$PORT"
+echo "- Port: $PORT"
+echo "- Thư mục web: $WEB_DIR"
+echo ""
+echo "Kiểm tra dịch vụ:"
+if netstat -ln 2>/dev/null | grep -q ":$PORT " || ss -ln 2>/dev/null | grep -q ":$PORT "; then
+    echo "✅ Dịch vụ uhttpd đang chạy trên port $PORT"
+else
+    echo "❌ Dịch vụ uhttpd chưa khởi động"
 fi
 
 echo ""
-echo ">>> Thiết lập hoàn tất!"
-echo ">>> Truy cập màn hình giám sát modem tại:"
-echo "    http://$(/sbin/ifconfig br-lan 2>/dev/null | grep 'inet addr:' | awk '{print $2}' | cut -f2 -d:):${UHTTPD_PORT}/"
-echo "    (IP trên là ví dụ, hãy kiểm tra IP thực tế của router nếu không truy cập được)"
+echo "Để gỡ cài đặt, chạy:"
+echo "rm -rf $WEB_DIR"
+echo "sed -i '/em9190/,/^$/d' $UHTTPD_CONFIG"
+echo "/etc/init.d/uhttpd restart"
 echo ""
-echo "Lưu ý quan trọng:"
-echo " - Đảm bảo modem EM9190 đã được kết nối và nhận dạng bởi hệ thống."
-echo " - Đảm bảo bạn đã cài đặt gói 'gcom' HOẶC 'sms_tool' (ví dụ: 'opkg install gcom')."
-echo " - Nếu bạn sao chép file này từ Windows, hãy chạy 'dos2unix setup_em9190_monitor.sh' trước khi thực thi."
-echo " - Output của các lệnh AT có thể khác nhau tùy theo firmware modem, script có thể cần điều chỉnh."
-echo " - Nếu gặp lỗi 'No modem device found', hãy đảm bảo /usr/share/3ginfo-lite/detect.sh (hoặc một phiên bản tương đương) có tồn tại và hoạt động."
-
-exit 0
+echo "Truy cập: http://$(ip route get 1 | awk '{print $NF;exit}'):$PORT"

@@ -297,7 +297,7 @@ NR_IMEI=$(echo "\$O" | awk -F: '/^\+GSN:/ {print \$2}' | tr -d '\r\n' | xargs)
 [ -z "\$NR_IMEI" ] && NR_IMEI=$(echo "\$O" | awk '/IMEI:/ {print \$2}' | tr -d '\r\n' | xargs) # Fallback if GSTATUS provides it
 [ -z "\$NR_IMEI" ] && NR_IMEI="-"
 
-NR_IMSI=$(echo "\$O" | awk -F: '/^\+CIMI:/ {print \$2}' | tr -d '\r\n' | xargs)
+NR_IMSI=$(echo "\$O" | awk -F: '/^\+CIMI:/ {print \$2}' | tr -d '\r\\n' | xargs)
 [ -z "\$NR_IMSI" ] && NR_IMSI="-"
 
 NR_ICCID=$(echo "\$O" | awk -F: '/^\+ICCID:/ {print \$2}' | tr -d '\r\n' | xargs)
@@ -529,17 +529,26 @@ fi
 # --- 4. Cấu hình uhttpd ---
 echo ">>> Cấu hình uhttpd để phục vụ trên port ${UHTTPD_PORT}..."
 
-# Xóa cấu hình cũ nếu tồn tại để tránh trùng lặp hoặc lỗi
+# Xóa cấu hình cũ theo tên (nếu có) để đảm bảo sạch sẽ
 uci -q delete uhttpd."${UHTTPD_CONFIG_SECTION}"
 
-# Thêm cấu hình mới
-uci add uhttpd "${UHTTPD_CONFIG_SECTION}"
+# Thêm cấu hình mới và bắt lấy ID của section vừa tạo (anonymous)
+# Sau đó đổi tên cho nó để tham chiếu dễ dàng hơn
+NEW_SECTION_ID=$(uci add uhttpd)
+if [ -z "${NEW_SECTION_ID}" ]; then
+    echo "!!! Lỗi: Không thể thêm section uhttpd mới. Thoát."
+    exit 1
+fi
+uci rename uhttpd."${NEW_SECTION_ID}"="${UHTTPD_CONFIG_SECTION}"
+
+# Bây giờ, cấu hình các tùy chọn cho section vừa tạo bằng tên đã đổi
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".enabled='1'
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".listen_port="${UHTTPD_PORT}"
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".home="${MONITOR_DIR}"
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".index="${INDEX_HTML_NAME}"
 
 # Thêm interpreter cho shell script để uhttpd có thể thực thi nó
+# Điều này cho phép get_em9190_status.sh chạy khi được yêu cầu qua HTTP
 uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/usr/bin/sh'
 uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/bin/ash'
 
@@ -557,7 +566,7 @@ fi
 echo ""
 echo ">>> Thiết lập hoàn tất!"
 echo ">>> Truy cập màn hình giám sát modem tại:"
-echo "    http://$(/sbin/ifconfig br-lan | grep 'inet addr:' | awk '{print $2}' | cut -f2 -d:):${UHTTPD_PORT}/"
+echo "    http://$(/sbin/ifconfig br-lan 2>/dev/null | grep 'inet addr:' | awk '{print $2}' | cut -f2 -d:):${UHTTPD_PORT}/"
 echo "    (IP trên là ví dụ, hãy kiểm tra IP thực tế của router nếu không truy cập được)"
 echo ""
 echo "Lưu ý quan trọng:"
@@ -565,5 +574,6 @@ echo " - Đảm bảo modem EM9190 đã được kết nối và nhận dạng b
 echo " - Đảm bảo bạn đã cài đặt gói 'gcom' HOẶC 'sms_tool' (ví dụ: 'opkg install gcom')."
 echo " - Nếu bạn sao chép file này từ Windows, hãy chạy 'dos2unix setup_em9190_monitor.sh' trước khi thực thi."
 echo " - Output của các lệnh AT có thể khác nhau tùy theo firmware modem, script có thể cần điều chỉnh."
+echo " - Nếu gặp lỗi 'No modem device found', hãy đảm bảo /usr/share/3ginfo-lite/detect.sh (hoặc một phiên bản tương đương) có tồn tại và hoạt động."
 
 exit 0

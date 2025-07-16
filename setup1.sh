@@ -5,11 +5,12 @@
 # Chạy trên OpenWrt/LEDE.
 #
 # Chức năng:
-# 1. Tạo thư mục /usr/bin/em9190_monitor để chứa các script và file HTML.
-# 2. Tạo script `get_em9190_status.sh` để lấy thông tin modem (dữ liệu JSON).
-# 3. Tạo file `em9190_status.html` để hiển thị thông tin theo dạng bảng trên web.
-# 4. Cấu hình uhttpd để phục vụ các file này trên port 9999.
-# 5. Khởi động lại uhttpd để áp dụng cấu hình.
+# 1. Tạo thư mục /usr/bin/em9190_monitor để chứa script thực thi.
+# 2. Tạo thư mục /www/em9190 để chứa file HTML tĩnh.
+# 3. Tạo script `get_em9190_status.sh` (dữ liệu JSON) trong /usr/bin/em9190_monitor.
+# 4. Tạo file `em9190_status.html` (giao diện web) trong /www/em9190.
+# 5. Cấu hình uhttpd để phục vụ các file này trên port 9999.
+# 6. Khởi động lại uhttpd để áp dụng cấu hình.
 #
 # Cách sử dụng:
 # 1. Đảm bảo router của bạn đã cài đặt 'gcom' hoặc 'sms_tool'.
@@ -23,11 +24,15 @@
 # ==============================================================================
 
 # --- Cấu hình ---
-MONITOR_DIR="/usr/bin/em9190_monitor"
+SCRIPT_DIR="/usr/bin/em9190_monitor"
+WEB_DIR="/www/em9190"
+
 STATUS_SCRIPT_NAME="get_em9190_status.sh"
 INDEX_HTML_NAME="em9190_status.html"
-STATUS_SCRIPT="${MONITOR_DIR}/${STATUS_SCRIPT_NAME}"
-INDEX_HTML="${MONITOR_DIR}/${INDEX_HTML_NAME}"
+
+STATUS_SCRIPT="${SCRIPT_DIR}/${STATUS_SCRIPT_NAME}"
+INDEX_HTML="${WEB_DIR}/${INDEX_HTML_NAME}"
+
 UHTTPD_CONFIG_SECTION="em9190_monitor"
 UHTTPD_PORT="9999"
 
@@ -36,11 +41,18 @@ RES="/usr/share/3ginfo-lite"
 
 echo ">>> Bắt đầu thiết lập màn hình giám sát EM9190..."
 
-# --- 1. Tạo thư mục ---
-echo ">>> Tạo thư mục: ${MONITOR_DIR}"
-mkdir -p "${MONITOR_DIR}"
+# --- 1. Tạo thư mục script và thư mục web ---
+echo ">>> Tạo thư mục script: ${SCRIPT_DIR}"
+mkdir -p "${SCRIPT_DIR}"
 if [ $? -ne 0 ]; then
-    echo "!!! Lỗi: Không thể tạo thư mục ${MONITOR_DIR}. Hãy kiểm tra quyền hoặc dung lượng đĩa. Thoát."
+    echo "!!! Lỗi: Không thể tạo thư mục ${SCRIPT_DIR}. Hãy kiểm tra quyền hoặc dung lượng đĩa. Thoát."
+    exit 1
+fi
+
+echo ">>> Tạo thư mục web: ${WEB_DIR}"
+mkdir -p "${WEB_DIR}"
+if [ $? -ne 0 ]; then
+    echo "!!! Lỗi: Không thể tạo thư mục ${WEB_DIR}. Hãy kiểm tra quyền hoặc dung lượng đĩa. Thoát."
     exit 1
 fi
 
@@ -297,7 +309,7 @@ NR_IMEI=$(echo "\$O" | awk -F: '/^\+GSN:/ {print \$2}' | tr -d '\r\n' | xargs)
 [ -z "\$NR_IMEI" ] && NR_IMEI=$(echo "\$O" | awk '/IMEI:/ {print \$2}' | tr -d '\r\n' | xargs) # Fallback if GSTATUS provides it
 [ -z "\$NR_IMEI" ] && NR_IMEI="-"
 
-NR_IMSI=$(echo "\$O" | awk -F: '/^\+CIMI:/ {print \$2}' | tr -d '\r\\n' | xargs)
+NR_IMSI=$(echo "\$O" | awk -F: '/^\+CIMI:/ {print \$2}' | tr -d '\r\n' | xargs)
 [ -z "\$NR_IMSI" ] && NR_IMSI="-"
 
 NR_ICCID=$(echo "\$O" | awk -F: '/^\+ICCID:/ {print \$2}' | tr -d '\r\n' | xargs)
@@ -441,7 +453,8 @@ cat << 'EOF_HTML' > "${INDEX_HTML}"
 
     <script>
         function updateStatus() {
-            // Sử dụng path tương đối '/get_em9190_status.sh' vì cả hai file nằm trong cùng thư mục gốc của uhttpd
+            // Sử dụng path tuyệt đối vì get_em9190_status.sh không nằm trong thư mục web
+            // mà được map bởi uhttpd dispatch
             fetch('/get_em9190_status.sh') 
                 .then(response => {
                     if (!response.ok) {
@@ -544,11 +557,14 @@ uci rename uhttpd."${NEW_SECTION_ID}"="${UHTTPD_CONFIG_SECTION}"
 # Bây giờ, cấu hình các tùy chọn cho section vừa tạo bằng tên đã đổi
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".enabled='1'
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".listen_port="${UHTTPD_PORT}"
-uci set uhttpd."${UHTTPD_CONFIG_SECTION}".home="${MONITOR_DIR}"
+uci set uhttpd."${UHTTPD_CONFIG_SECTION}".home="${WEB_DIR}" # WEB_DIR cho HTML
 uci set uhttpd."${UHTTPD_CONFIG_SECTION}".index="${INDEX_HTML_NAME}"
 
+# Cấu hình dispatch để map URL ảo /get_em9190_status.sh đến script vật lý
+# Điều này cho phép JS trong HTML gọi script này
+uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".dispatch="/${STATUS_SCRIPT_NAME}=${STATUS_SCRIPT}"
+
 # Thêm interpreter cho shell script để uhttpd có thể thực thi nó
-# Điều này cho phép get_em9190_status.sh chạy khi được yêu cầu qua HTTP
 uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/usr/bin/sh'
 uci add_list uhttpd."${UHTTPD_CONFIG_SECTION}".interpreter='/bin/ash'
 

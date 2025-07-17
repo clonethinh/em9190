@@ -956,7 +956,7 @@ cat > "$WEB_DIR/index.html" << 'EOF'
         function toggleAutoRefresh() {
             const checkbox = document.getElementById('autoRefresh');
             if (checkbox.checked) {
-                autoRefreshInterval = setInterval(loadData, 60000); // 60 seconds
+                autoRefreshInterval = setInterval(loadData, 30000); // 30 seconds
                 startCountdown();
             } else {
                 clearInterval(autoRefreshInterval);

@@ -1037,7 +1037,7 @@ O=$(sms_tool -d "$DEVICE" at "AT!GSTATUS?" 2>/dev/null)
 
 # ==== THÔNG TIN MODEM ====
 MODEL=$(sms_tool -d "$DEVICE" at "AT+CGMM" 2>/dev/null | grep -v -e '^AT' -e '^OK' -e '^$' | head -n1 | tr -d '\r\n')
-FW=$(sms_tool -d "$DEVICE" at "AT+CGMR" 2>/dev/null | grep -v -e '^AT' -e '^OK' -e '^$' | head -n1 | tr -d '\r\n')
+FW=$(sms_tool -d "$DEVICE" at "AT+CGMR" 2>/dev/null | grep -v -e '^AT' -e '^OK' -e '^$' | head -n1 | awk '{print $1}')
 IMEI=$(sanitize_string "$(get_single_line_value 'AT+CGSN')")
 IMSI=$(sanitize_string "$(get_imsi)")
 ICCID=$(sanitize_string "$(get_iccid)")
@@ -1053,13 +1053,27 @@ case "$SYS_MODE" in
 esac
 
 # ==== TAC ====
-TAC_HEX=$(echo "$O" | awk '/.*TAC:/ {print $6}')
-[ -n "$TAC_HEX" ] && TAC_DEC=$(printf "%d" "0x$TAC_HEX")
+TAC_HEX=$(echo "$O" | grep -oE 'TAC:[[:space:]]+[0-9a-fA-F]+' | head -1 | sed -E 's/TAC:[[:space:]]+//' | tr -d '\r\n\t ')
+
+if echo "$TAC_HEX" | grep -qE '^[0-9a-fA-F]+$'; then
+    TAC_DEC=$(printf "%d" "0x$TAC_HEX" 2>/dev/null)
+else
+    TAC_HEX="-"
+    TAC_DEC="-"
+fi
 
 # ==== CID, LAC, PCI ====
-CID_HEX=$(echo "$O" | awk '/.*TAC:/ {gsub(/[()]/, "", $7); print $7}' )
-[ -n "$CID_HEX" ] && CID_DEC=$(printf "%d" "0x$CID_HEX")
-PCI=$(echo "$O" | awk '/.*TAC:/ {print $8}' | sed 's/[,)]//g')
+CID_HEX=$(echo "$O" | awk '/.*TAC:/ {gsub(/[()]/, "", $7); print $7}' | tr -d '\r\n ')
+if [ -n "$CID_HEX" ]; then
+    CID_DEC=$(printf "%d" "0x$CID_HEX" 2>/dev/null || echo "-")
+else
+    CID_DEC="-"
+    CID_HEX="-"
+fi
+
+PCI=$(echo "$O" | awk '/.*TAC:/ {print $8}' | sed 's/[,)]//g' | tr -d '\r\n ')
+[ -z "$PCI" ] && PCI="-"
+
 
 # ==== TÍN HIỆU ====
 RSRP=$(echo "$O" | awk '/^PCC/ && /RSRP/ {print $8}' | head -1 | xargs)
@@ -1088,6 +1102,15 @@ get_band_string() {
         "28") echo -n " (700 MHz)";;
         "40") echo -n " (2300 MHz)";;
         *) echo -n "";;
+    esac
+}
+
+get_country_from_mcc() {
+    case "$1" in
+        452) echo "Việt Nam" ;;
+        310) echo "USA" ;;
+        262) echo "Germany" ;;
+        *) echo "-" ;;
     esac
 }
 
@@ -1161,21 +1184,32 @@ case "$PROTO_INFO" in
     *) PROTO="qmi";;
 esac
 
-# ==== RX/TX, IP, STATUS ====
-# --- Rx/Tx + IP ---
-IFACE=$(ip route | awk '/default/ {print $5}' | head -1)
-RX_BYTES=$(cat /sys/class/net/$IFACE/statistics/rx_bytes 2>/dev/null || echo "0")
-TX_BYTES=$(cat /sys/class/net/$IFACE/statistics/tx_bytes 2>/dev/null || echo "0")
-UPTIME=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+# Lấy thông tin interface logic (tên trong /etc/config/network)
+IFNAME="5G"
+
+# Lấy thiết bị vật lý (ví dụ wwan0)
+IFACE=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.l3_device')
+
+# Lấy IP WAN (ưu tiên dùng ubus cho chuẩn)
+IP_WAN=$(ubus call network.interface.$IFNAME status | jsonfilter -e '@["ipv4-address"][0].address')
+[ -z "$IP_WAN" ] && IP_WAN="-"
+
+# Lấy thời gian hoạt động (uptime) chính xác từ ifstatus (đơn vị: giây)
+UPTIME=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.uptime')
+[ -z "$UPTIME" ] && UPTIME=0  # fallback nếu lỗi
+
+# Chuyển uptime sang hh:mm:ss
 CONN_TIME=$(printf "%02d:%02d:%02d" $((UPTIME/3600)) $((UPTIME%3600/60)) $((UPTIME%60)))
 
-# --- Kiểm tra trạng thái kết nối WAN ---
-IP_WAN=$(ip addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2}' | cut -d'/' -f1 | grep -v '^127' | head -n1)
-if [ -n "$IP_WAN" ]; then
-    STATUS="connected"
-else
+# Lấy Rx/Tx bytes
+RX_BYTES=$(cat /sys/class/net/$IFACE/statistics/rx_bytes 2>/dev/null || echo "0")
+TX_BYTES=$(cat /sys/class/net/$IFACE/statistics/tx_bytes 2>/dev/null || echo "0")
+
+# Kiểm tra kết nối
+if [ "$IP_WAN" = "-" ]; then
     STATUS="disconnected"
-    IP_WAN="-"
+else
+    STATUS="connected"
 fi
 
 
@@ -1197,7 +1231,7 @@ cat << JSONEOF
     "operator_name": "$(sanitize_string "$COPS")",
     "operator_mcc": "$(sanitize_string "$COPS_MCC")",
     "operator_mnc": "$(sanitize_string "$COPS_MNC")",
-    "location": "Việt Nam",
+    "location": "$(get_country_from_mcc "$COPS_MCC")",
     "mode": "$(sanitize_string "$MODE")",
     "registration": "$(sanitize_string "$REG_STATUS")",
     "imei": "$(sanitize_string "$IMEI")",

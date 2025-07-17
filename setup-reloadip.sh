@@ -34,549 +34,570 @@ cat > "$WEB_DIR/index.html" << 'EOF'
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EM9190 Monitoring</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
-        :root {
-            --primary-color: #6366f1;
-            --secondary-color: #8b5cf6;
-            --accent-color: #06b6d4;
-            --success-color: #10b981;
-            --warning-color: #f59e0b;
-            --error-color: #ef4444;
+    :root {
+        --primary-color: #6366f1; /* Indigo-500 */
+        --secondary-color: #8b5cf6; /* Violet-400 */
+        --accent-color: #06b6d4; /* Cyan-500 */
+        --success-color: #10b981; /* Emerald-500 */
+        --warning-color: #f59e0b; /* Amber-500 */
+        --error-color: #ef4444; /* Red-500 */
 
-            /* Light Mode Variables */
-            --light-bg-primary: #f8fafc;
-            --light-bg-secondary: #e2e8f0;
-            --light-bg-card: #ffffff;
-            --light-text-primary: #0f172a;
-            --light-text-secondary: #475569;
-            --light-text-muted: #64748b;
-            --light-border-color: #cbd5e1;
-            --light-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --light-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --light-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            --light-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        /* Light Mode Variables */
+        --light-bg-primary: #f8fafc; /* White-ish */
+        --light-bg-secondary: #e2e8f0; /* Gray-200 */
+        --light-bg-card: #ffffff; /* White */
+        --light-text-primary: #0f172a; /* Dark Gray */
+        --light-text-secondary: #475569; /* Medium Gray */
+        --light-text-muted: #64748b; /* Light Gray */
+        --light-border-color: #cbd5e1; /* Gray-300 */
+        --light-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --light-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --light-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --light-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
-            /* Dark Mode Variables */
-            --dark-bg-primary: #0f172a;
-            --dark-bg-secondary: #1e293b;
-            --dark-bg-card: #334155;
-            --dark-text-primary: #f8fafc;
-            --dark-text-secondary: #cbd5e1;
-            --dark-text-muted: #94a3b8;
-            --dark-border-color: #475569;
-            --dark-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --dark-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --dark-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            --dark-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        /* Dark Mode Variables */
+        --dark-bg-primary: #0f172a; /* Very Dark Blue */
+        --dark-bg-secondary: #1e293b; /* Dark Blue */
+        --dark-bg-card: #334155; /* Slate Gray */
+        --dark-text-primary: #f8fafc; /* White */
+        --dark-text-secondary: #cbd5e1; /* Light Gray */
+        --dark-text-muted: #94a3b8; /* Medium Gray */
+        --dark-border-color: #475569; /* Medium Dark Gray */
+        --dark-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --dark-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --dark-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --dark-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
-            --shadow-sm: var(--dark-shadow-sm);
-            --shadow-md: var(--dark-shadow-md);
-            --shadow-lg: var(--dark-shadow-lg);
-            --shadow-xl: var(--dark-shadow-xl);
-            
-            --bg-primary: var(--dark-bg-primary);
-            --bg-secondary: var(--dark-bg-secondary);
-            --bg-card: var(--dark-bg-card);
-            --text-primary: var(--dark-text-primary);
-            --text-secondary: var(--dark-text-secondary);
-            --text-muted: var(--dark-text-muted);
-            --border-color: var(--dark-border-color);
-        }
+        --shadow-sm: var(--dark-shadow-sm);
+        --shadow-md: var(--dark-shadow-md);
+        --shadow-lg: var(--dark-shadow-lg);
+        --shadow-xl: var(--dark-shadow-xl);
 
-        [data-theme="light"] {
-            --bg-primary: var(--light-bg-primary);
-            --bg-secondary: var(--light-bg-secondary);
-            --bg-card: var(--light-bg-card);
-            --text-primary: var(--light-text-primary);
-            --text-secondary: var(--light-text-secondary);
-            --text-muted: var(--light-text-muted);
-            --border-color: var(--light-border-color);
-            --shadow-sm: var(--light-shadow-sm);
-            --shadow-md: var(--light-shadow-md);
-            --shadow-lg: var(--light-shadow-lg);
-            --shadow-xl: var(--light-shadow-xl);
-        }
+        --bg-primary: var(--dark-bg-primary);
+        --bg-secondary: var(--dark-bg-secondary);
+        --bg-card: var(--dark-bg-card);
+        --text-primary: var(--dark-text-primary);
+        --text-secondary: var(--dark-text-secondary);
+        --text-muted: var(--dark-text-muted);
+        --border-color: var(--dark-border-color);
+    }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: hidden;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: -1;
-        }
+    [data-theme="light"] {
+        --bg-primary: var(--light-bg-primary);
+        --bg-secondary: var(--light-bg-secondary);
+        --bg-card: var(--light-bg-card);
+        --text-primary: var(--light-text-primary);
+        --text-secondary: var(--light-text-secondary);
+        --text-muted: var(--light-text-muted);
+        --border-color: var(--light-border-color);
+        --shadow-sm: var(--light-shadow-sm);
+        --shadow-md: var(--light-shadow-md);
+        --shadow-lg: var(--light-shadow-lg);
+        --shadow-xl: var(--light-shadow-xl);
+    }
 
-        [data-theme="light"] body::before {
-             background: 
-                radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
-        }
-        
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Inter', sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        line-height: 1.6;
+        overflow-x: hidden;
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+            radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    [data-theme="light"] body::before {
+         background:
+            radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+    }
+
+    .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 3rem;
+        position: relative;
+    }
+
+    .header h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 1rem;
+        text-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+    }
+
+    .header::after {
+        content: '';
+        position: absolute;
+        bottom: -1rem;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100px;
+        height: 3px;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        border-radius: 2px;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 50px;
+        font-weight: 600;
+        font-size: 0.875rem;
+        margin-top: 1rem;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+    }
+
+    .status-badge::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+
+    .status-connected {
+        background: rgba(16, 185, 129, 0.2);
+        color: var(--success-color);
+    }
+
+    .status-connected::before {
+        background: var(--success-color);
+    }
+
+    .status-disconnected {
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--error-color);
+    }
+
+    .status-disconnected::before {
+        background: var(--error-color);
+    }
+
+    .status-loading {
+        background: rgba(245, 158, 11, 0.2);
+        color: var(--warning-color);
+    }
+
+    .status-loading::before {
+        background: var(--warning-color);
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 2rem;
+        margin-bottom: 3rem;
+    }
+
+    .card {
+        background: var(--bg-card);
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 2rem;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+
+    .card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-xl);
+        border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    .card h3 {
+        color: var(--text-primary);
+        margin-bottom: 1.5rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    /* --- SỬA ĐỔI CHO ICON --- */
+    .card h3::before {
+        content: attr(data-icon);
+        font-size: 1.5rem;
+        /* Bỏ gradient và dùng màu theo theme */
+        color: var(--primary-color); /* Đặt màu tím làm mặc định */
+        background: none;
+        -webkit-background-clip: initial;
+        background-clip: initial;
+        /* Có thể thêm text-shadow cho đẹp hơn */
+        text-shadow: 0 0 10px rgba(99, 102, 241, 0.5); /* Màu tím */
+        transition: color 0.3s ease, text-shadow 0.3s ease;
+    }
+
+    /* Thay đổi màu icon khi hover */
+    .card:hover h3::before {
+        color: var(--secondary-color); /* Màu tím đậm hơn */
+        text-shadow: 0 0 15px rgba(139, 92, 246, 0.7);
+    }
+
+    /* Tùy chỉnh màu icon cho chế độ sáng */
+    [data-theme="light"] .card h3::before {
+        color: var(--primary-color); /* Giữ màu tím hoặc đổi sang màu khác nếu muốn */
+        text-shadow: 0 0 10px rgba(99, 102, 241, 0.5); /* Màu tím */
+    }
+
+    [data-theme="light"] .card:hover h3::before {
+        color: var(--secondary-color); /* Màu tím đậm hơn */
+        text-shadow: 0 0 15px rgba(139, 92, 246, 0.7);
+    }
+    /* ------------------------ */
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0.75rem;
+        background: rgba(15, 23, 42, 0.3); /* Placeholder, will adjust for theme */
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.05); /* Placeholder, will adjust for theme */
+        transition: all 0.3s ease;
+    }
+
+    [data-theme="light"] .info-row {
+        background: rgba(226, 232, 240, 0.5); /* Light theme background */
+        border-color: rgba(201, 203, 208, 0.3); /* Light theme border */
+    }
+
+    .info-row:hover {
+        background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
+        border-color: rgba(99, 102, 241, 0.2);
+    }
+
+    [data-theme="light"] .info-row:hover {
+        background: rgba(226, 232, 240, 0.7); /* Light theme hover background */
+        border-color: rgba(99, 102, 241, 0.2);
+    }
+
+    .info-row:last-child {
+        margin-bottom: 0;
+    }
+
+    .info-label {
+        font-weight: 500;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+    }
+
+    .info-value {
+        color: var(--text-primary);
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 500;
+        text-align: right;
+    }
+
+    .signal-bars {
+        display: flex;
+        align-items: end;
+        gap: 4px;
+        height: 30px;
+    }
+
+    .signal-bar {
+        width: 10px;
+        background: rgba(148, 163, 184, 0.3);
+        border-radius: 3px;
+        transition: all 0.3s ease;
+    }
+
+    .signal-bar:nth-child(1) { height: 6px; }
+    .signal-bar:nth-child(2) { height: 12px; }
+    .signal-bar:nth-child(3) { height: 18px; }
+    .signal-bar:nth-child(4) { height: 24px; }
+    .signal-bar:nth-child(5) { height: 30px; }
+
+    .signal-bar.active {
+        background: linear-gradient(135deg, var(--success-color), var(--accent-color));
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
+    .signal-strength {
+        margin-left: 1rem;
+        font-weight: 600;
+        color: var(--success-color);
+    }
+
+    .refresh-btn {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 50px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: var(--shadow-md);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .refresh-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        transition: left 0.5s ease;
+    }
+
+    .refresh-btn:hover::before {
+        left: 100%;
+    }
+
+    .refresh-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .refresh-btn:active {
+        transform: translateY(0);
+    }
+
+    .band-info {
+        background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin: 0.25rem 0;
+        font-family: 'JetBrains Mono', monospace;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        font-size: 0.875rem;
+    }
+
+    [data-theme="light"] .band-info {
+        background: rgba(226, 232, 240, 0.5); /* Light theme background */
+        border-color: rgba(99, 102, 241, 0.15); /* Light theme border */
+    }
+
+    .mode-5g {
+        color: var(--error-color);
+        font-weight: 600;
+        text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    }
+
+    .mode-lte {
+        color: var(--accent-color);
+        font-weight: 600;
+        text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    }
+
+    /* --- Phần TỰ ĐỘNG LÀM MỚI ĐÃ BỊ ẨN --- */
+    .auto-refresh {
+        display: none !important; /* Ẩn vĩnh viễn */
+    }
+    /* ------------------------------------------ */
+
+    /* --- Điều chỉnh vị trí của theme-toggle --- */
+    .theme-toggle {
+        position: fixed;
+        top: 2rem;
+        right: 2rem; /* Đặt chế độ tối ở góc phải nhất */
+        background: var(--bg-card); /* Adjust for theme */
+        backdrop-filter: blur(10px);
+        padding: 0.75rem 0.8rem; /* Điều chỉnh padding */
+        border-radius: 15px;
+        border: 1px solid var(--border-color); /* Adjust for theme */
+        box-shadow: var(--shadow-lg);
+        z-index: 1000;
+        cursor: pointer;
+        display: flex; /* Sử dụng flexbox */
+        align-items: center; /* Căn giữa theo chiều dọc */
+        gap: 0.4rem; /* Giảm khoảng cách */
+        transition: all 0.3s ease;
+        white-space: nowrap; /* Quan trọng: Ngăn chữ bị xuống dòng */
+    }
+
+    [data-theme="light"] .theme-toggle {
+        background: rgba(255, 255, 255, 0.8);
+        border-color: var(--light-border-color);
+    }
+
+    .theme-toggle:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-xl);
+    }
+
+    .theme-toggle .icon {
+        font-size: 1.2rem;
+        flex-shrink: 0; /* Ngăn icon bị co lại */
+    }
+
+    /* Nếu có một phần tử bao bọc cho icon và chữ, hãy đảm bảo nó cũng xử lý như flex */
+    .theme-toggle > div {
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+
+    /* --- Responsive Design --- */
+    @media (max-width: 768px) {
         .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
+            padding: 1rem;
         }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 3rem;
-            position: relative;
-        }
-        
+
         .header h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 1rem;
-            text-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+            font-size: 2rem;
         }
-        
-        .header::after {
-            content: '';
-            position: absolute;
-            bottom: -1rem;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 100px;
-            height: 3px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            border-radius: 2px;
-        }
-        
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 0.875rem;
-            margin-top: 1rem;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s ease;
-        }
-        
-        .status-badge::before {
-            content: '';
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        
-        .status-connected {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success-color);
-        }
-        
-        .status-connected::before {
-            background: var(--success-color);
-        }
-        
-        .status-disconnected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--error-color);
-        }
-        
-        .status-disconnected::before {
-            background: var(--error-color);
-        }
-        
-        .status-loading {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--warning-color);
-        }
-        
-        .status-loading::before {
-            background: var(--warning-color);
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
+
         .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 2rem;
-            margin-bottom: 3rem;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
         }
-        
+
         .card {
-            background: var(--bg-card);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 2rem;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-        
-        .card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-xl);
-            border-color: rgba(99, 102, 241, 0.3);
-        }
-        
-        .card h3 {
-            color: var(--text-primary);
-            margin-bottom: 1.5rem;
-            font-size: 1.25rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        
-        .card h3::before {
-            content: attr(data-icon);
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding: 0.75rem;
-            background: rgba(15, 23, 42, 0.3); /* Placeholder, will adjust for theme */
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05); /* Placeholder, will adjust for theme */
-            transition: all 0.3s ease;
+            padding: 1.5rem;
         }
 
-        [data-theme="light"] .info-row {
-            background: rgba(226, 232, 240, 0.5); /* Light theme background */
-            border-color: rgba(201, 203, 208, 0.3); /* Light theme border */
+        /* --- Điều chỉnh cho màn hình nhỏ --- */
+        .auto-refresh, .theme-toggle {
+            position: static; /* Hủy bỏ position: fixed */
+            margin-left: auto;  /* Căn giữa */
+            margin-right: auto; /* Căn giữa */
+            margin-bottom: 2rem; /* Thêm khoảng cách bên dưới */
+            max-width: 300px; /* Giới hạn chiều rộng */
+            padding-left: 1rem; /* Thêm đệm hai bên */
+            padding-right: 1rem;
+            flex-wrap: wrap; /* Cho phép các item xuống dòng */
+            justify-content: center; /* Căn giữa nội dung bên trong flex container */
         }
 
-        .info-row:hover {
-            background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
-            border-color: rgba(99, 102, 241, 0.2);
-        }
-
-        [data-theme="light"] .info-row:hover {
-            background: rgba(226, 232, 240, 0.7); /* Light theme hover background */
-            border-color: rgba(99, 102, 241, 0.2);
-        }
-        
-        .info-row:last-child {
-            margin-bottom: 0;
-        }
-        
-        .info-label {
-            font-weight: 500;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-        
-        .info-value {
-            color: var(--text-primary);
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 500;
-            text-align: right;
-        }
-        
-        .signal-bars {
-            display: flex;
-            align-items: end;
-            gap: 4px;
-            height: 30px;
-        }
-        
-        .signal-bar {
-            width: 10px;
-            background: rgba(148, 163, 184, 0.3);
-            border-radius: 3px;
-            transition: all 0.3s ease;
-        }
-        
-        .signal-bar:nth-child(1) { height: 6px; }
-        .signal-bar:nth-child(2) { height: 12px; }
-        .signal-bar:nth-child(3) { height: 18px; }
-        .signal-bar:nth-child(4) { height: 24px; }
-        .signal-bar:nth-child(5) { height: 30px; }
-        
-        .signal-bar.active {
-            background: linear-gradient(135deg, var(--success-color), var(--accent-color));
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-        }
-        
-        .signal-strength {
-            margin-left: 1rem;
-            font-weight: 600;
-            color: var(--success-color);
-        }
-        
-        .refresh-btn {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            border: none;
-            padding: 1rem 2rem;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow-md);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .refresh-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-            transition: left 0.5s ease;
-        }
-        
-        .refresh-btn:hover::before {
-            left: 100%;
-        }
-        
-        .refresh-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
-        }
-        
-        .refresh-btn:active {
-            transform: translateY(0);
-        }
-        
-        .band-info {
-            background: rgba(15, 23, 42, 0.5); /* Placeholder, will adjust for theme */
-            padding: 0.75rem;
-            border-radius: 8px;
-            margin: 0.25rem 0;
-            font-family: 'JetBrains Mono', monospace;
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            font-size: 0.875rem;
-        }
-
-        [data-theme="light"] .band-info {
-            background: rgba(226, 232, 240, 0.5); /* Light theme background */
-            border-color: rgba(99, 102, 241, 0.15); /* Light theme border */
-        }
-        
-        .mode-5g {
-            color: var(--error-color);
-            font-weight: 600;
-            text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
-        }
-        
-        .mode-lte {
-            color: var(--accent-color);
-            font-weight: 600;
-            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
-        }
-        
-        /* --- Phần TỰ ĐỘNG LÀM MỚI ĐÃ BỊ ẨN --- */
-        .auto-refresh {
-            display: none !important; /* Ẩn vĩnh viễn */
-            /* Các thuộc tính định vị khác không còn cần thiết nữa */
-        }
-        /* ------------------------------------------ */
-
-        /* --- Điều chỉnh vị trí của theme-toggle --- */
+        /* Điều chỉnh riêng cho theme-toggle trên màn hình nhỏ */
         .theme-toggle {
-            position: fixed;
-            top: 2rem;
-            right: 2rem; /* Đặt chế độ tối ở góc phải nhất */
-            background: var(--bg-card); /* Adjust for theme */
-            backdrop-filter: blur(10px);
-            padding: 0.75rem 0.8rem; /* Điều chỉnh padding */
-            border-radius: 15px;
-            border: 1px solid var(--border-color); /* Adjust for theme */
-            box-shadow: var(--shadow-lg);
-            z-index: 1000;
-            cursor: pointer;
-            display: flex; /* Sử dụng flexbox */
-            align-items: center; /* Căn giữa theo chiều dọc */
-            gap: 0.4rem; /* Giảm khoảng cách */
-            transition: all 0.3s ease;
-            white-space: nowrap; /* Quan trọng: Ngăn chữ bị xuống dòng */
+             margin-top: 1rem; /* Khoảng cách bên trên */
         }
 
-        [data-theme="light"] .theme-toggle {
-            background: rgba(255, 255, 255, 0.8);
-            border-color: var(--light-border-color);
+        /* Đảm bảo cả hai đều hoạt động tốt khi stack */
+        .auto-refresh {
+            margin-bottom: 1rem; /* Giảm khoảng cách dưới auto-refresh khi stack */
         }
 
-        .theme-toggle:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-xl);
-        }
-
-        .theme-toggle .icon {
-            font-size: 1.2rem;
-            flex-shrink: 0; /* Ngăn icon bị co lại */
-        }
-
-        /* Nếu có một phần tử bao bọc cho icon và chữ, hãy đảm bảo nó cũng xử lý như flex */
-        .theme-toggle > div {
+        /* Có thể cần điều chỉnh lại z-index hoặc display nếu stack bị chồng */
+        .auto-refresh, .theme-toggle {
+            z-index: 1000; /* Đảm bảo chúng ở trên các phần tử khác */
             display: flex;
-            align-items: center;
-            white-space: nowrap;
+            justify-content: center; /* Căn giữa nội dung bên trong */
         }
-        
-        /* --- Responsive Design --- */
-        @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .grid {
-                grid-template-columns: 1fr;
-                gap: 1.5rem;
-            }
-            
-            .card {
-                padding: 1.5rem;
-            }
-            
-            /* --- Điều chỉnh cho màn hình nhỏ --- */
-            /* Các phần tử auto-refresh và theme-toggle sẽ ở chế độ static */
-            .auto-refresh, .theme-toggle {
-                position: static; /* Hủy bỏ position: fixed */
-                margin-left: auto;  /* Căn giữa */
-                margin-right: auto; /* Căn giữa */
-                margin-bottom: 2rem; /* Thêm khoảng cách bên dưới */
-                max-width: 300px; /* Giới hạn chiều rộng */
-                padding-left: 1rem; /* Thêm đệm hai bên */
-                padding-right: 1rem;
-                flex-wrap: wrap; /* Cho phép các item xuống dòng */
-                justify-content: center; /* Căn giữa nội dung bên trong flex container */
-            }
-            
-            /* Điều chỉnh riêng cho theme-toggle trên màn hình nhỏ */
-            .theme-toggle {
-                 margin-top: 1rem; /* Khoảng cách bên trên */
-            }
+    }
 
-            /* Đảm bảo cả hai đều hoạt động tốt khi stack */
-            .auto-refresh {
-                margin-bottom: 1rem; /* Giảm khoảng cách dưới auto-refresh khi stack */
-            }
+    /* Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 
-            /* Có thể cần điều chỉnh lại z-index hoặc display nếu stack bị chồng */
-            .auto-refresh, .theme-toggle {
-                z-index: 1000; /* Đảm bảo chúng ở trên các phần tử khác */
-                display: flex;
-                justify-content: center; /* Căn giữa nội dung bên trong */
-            }
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .card {
-            animation: fadeIn 0.5s ease-out;
-        }
-        
-        .card:nth-child(1) { animation-delay: 0.1s; }
-        .card:nth-child(2) { animation-delay: 0.2s; }
-        .card:nth-child(3) { animation-delay: 0.3s; }
-        .card:nth-child(4) { animation-delay: 0.4s; }
-        .card:nth-child(5) { animation-delay: 0.5s; }
-        .card:nth-child(6) { animation-delay: 0.6s; }
-        
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: var(--bg-secondary);
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: var(--primary-color);
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--secondary-color);
-        }
-		.refresh-btn.mini {
-			padding: 0.4rem 0.8rem;
-			font-size: 0.9rem;
-			border-radius: 12px;
-			margin-left: 0.5rem;
-			height: 2.2rem;
-			width: 2.2rem;
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			box-shadow: var(--shadow-sm);
-			transition: transform 0.2s ease;
-		}
+    .card {
+        animation: fadeIn 0.5s ease-out;
+    }
 
-		.refresh-btn.mini:hover {
-			transform: scale(1.05);
-			box-shadow: var(--shadow-md);
-		}
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
+    .card:nth-child(3) { animation-delay: 0.3s; }
+    .card:nth-child(4) { animation-delay: 0.4s; }
+    .card:nth-child(5) { animation-delay: 0.5s; }
+    .card:nth-child(6) { animation-delay: 0.6s; }
 
-		.refresh-btn.mini:active {
-			transform: scale(0.95);
-		}
-    </style>
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: var(--bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--primary-color);
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--secondary-color);
+    }
+    .refresh-btn.mini {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.9rem;
+        border-radius: 12px;
+        margin-left: 0.5rem;
+        height: 2.2rem;
+        width: 2.2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.2s ease;
+    }
+
+    .refresh-btn.mini:hover {
+        transform: scale(1.05);
+        box-shadow: var(--shadow-md);
+    }
+
+    .refresh-btn.mini:active {
+        transform: scale(0.95);
+    }
+</style>
 </head>
 <body data-theme="dark">
     <div class="auto-refresh">
@@ -1004,7 +1025,7 @@ cat > "$WEB_DIR/index.html" << 'EOF'
         function toggleAutoRefresh() {
             const checkbox = document.getElementById('autoRefresh');
             if (checkbox.checked) {
-                autoRefreshInterval = setInterval(loadData, 60000); // 60 seconds
+                autoRefreshInterval = setInterval(loadData, 30000); // 30 seconds
                 startCountdown();
             } else {
                 clearInterval(autoRefreshInterval);
@@ -1028,7 +1049,6 @@ cat > "$WEB_DIR/index.html" << 'EOF'
     </script>
 </body>
 </html>
-
 EOF
 
 # 3. Tạo CGI script

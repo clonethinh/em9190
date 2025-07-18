@@ -1758,31 +1758,26 @@ fi
 #============================================
 # ==== XỬ LÝ YÊU CẦU SET APN MỚI ====
 if echo "$QUERY_STRING" | grep -q "action=set_apn"; then
-    # Tách giá trị APN từ chuỗi truy vấn
-    NEW_APN=$(echo "$QUERY_STRING" | sed -n 's/.*value=\([^&]*\).*/\1/p' | sed 's/%20/ /g' | sed 's/[^a-zA-Z0-9._-]//g')
+    NEW_APN=$(echo "$QUERY_STRING" | sed -n 's/.*value=\([^&]*\).*/\1/p' \
+        | sed 's/%20/ /g' | sed 's/[^a-zA-Z0-9._-]//g')
 
-    # Kiểm tra có giá trị hay không
+
     if [ -n "$NEW_APN" ]; then
+        # Chuyển toàn bộ debug sang stderr/log file
         echo "DEBUG_APN: Nhận yêu cầu set APN mới: $NEW_APN" >> /tmp/apn_debug.log
 
-        # Ghi vào cấu hình UCI cho interface '5G'
         uci set network.5G.apn="$NEW_APN"
         uci commit network
-
-        # Khởi động lại mạng (background để không chặn)
         /etc/init.d/network restart >/dev/null 2>&1 &
 
-        # Trả kết quả thành công
-        echo "Content-Type: application/json"
-        echo ""
-        echo '{"status":"ok", "apn":"'"$NEW_APN"'"}'
+        echo "{\"status\":\"ok\", \"apn\":\"$NEW_APN\"}"
     else
-        echo "Content-Type: application/json"
-        echo ""
         echo '{"status":"fail", "message":"APN không hợp lệ"}'
     fi
     exit 0
 fi
+
+
 
 
 # ==== LƯU TRỮ THÔNG TIN MẪU CHO LẦN SAU ====
@@ -1837,8 +1832,8 @@ cat << JSONEOF
     "rsrq": "$(sanitize_number "$RSRQ")",
     "rssi": "$(sanitize_number "$RSSI")",
     "sinr": "$(sanitize_number "$SINR")",
-	"rx_data": $(sanitize_number "$RX_BYTES"),
-	"tx_data": $(sanitize_number "$TX_BYTES"),
+    "rx_data": $(sanitize_number "$RX_BYTES"),
+    "tx_data": $(sanitize_number "$TX_BYTES"),
     "rx_speed": "$RX_SPEED_FORMAT",
     "tx_speed": "$TX_SPEED_FORMAT",
     "ping": "$(sanitize_string "$PING_MS")",

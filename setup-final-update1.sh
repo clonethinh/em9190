@@ -1560,12 +1560,13 @@ SINR=$(echo "$O" | grep "^SINR" | awk '{print $3}') # SINR (Signal to Interferen
 [ -z "$SINR" ] && SINR="-" # Đảm bảo SINR không rỗng
 
 # ==== THÔNG TIN BAND TẦN ====
-BAND=$(echo "$O" | awk '/^LTE band:/ {print $3}')
+RAW_BAND=$(echo "$O" | awk '/^LTE band:/ {print $3}')
+BAND=$(echo "$RAW_BAND" | sed 's/^B//')  # Xóa ký tự B nếu có
 FREQ=$(echo "$O" | awk '/^LTE band:/ {print $6}')
 
 if [ -n "$BAND" ]; then
     PBAND="B${BAND} @${FREQ} MHz"
-    MODE="$MODE ${BAND}"
+    MODE="$MODE B${BAND}"
 else
     PBAND="-"
 fi

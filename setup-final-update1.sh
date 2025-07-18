@@ -1478,9 +1478,11 @@ TEMP=$(echo "$O" | awk -F: '/Temperature:/ {print $3}' | xargs) # Nhiệt độ
 SYS_MODE=$(echo "$O" | awk '/^System mode:/ {print $3}') # Chế độ hệ thống (LTE, ENDC, ...)
 case "$SYS_MODE" in
     "LTE") MODE="LTE" ;;
-    "ENDC") MODE="5G NSA" ;; # ENDC là 5G Non-Standalone
-    *) MODE="-" ;; # Các chế độ khác
+    "ENDC") MODE="5G NSA" ;;
+    "NR5G-SA") MODE="5G SA" ;;  # nếu có SA
+    *) MODE="LTE" ;; # fallback an toàn
 esac
+[ -z "$MODE" ] || [ "$MODE" = "-" ] && MODE="LTE"
 
 # ==== TAC, CID, LAC, PCI ====
 # Lấy TAC (Tracking Area Code)
@@ -1513,10 +1515,16 @@ SINR=$(echo "$O" | grep "^SINR" | awk '{print $3}') # SINR (Signal to Interferen
 [ -z "$SINR" ] && SINR="-" # Đảm bảo SINR không rỗng
 
 # ==== THÔNG TIN BAND TẦN ====
-BAND=$(echo "$O" | awk '/^LTE band:/ {print $3}') # Lấy băng tần chính LTE
-FREQ=$(echo "$O" | awk '/^LTE band:/ {print $6}') # Lấy tần số tương ứng
-PBAND="B${BAND/B/} @${FREQ} MHz" # Định dạng cho Primary Band
-MODE="$MODE B${BAND/B/}" # Cập nhật biến MODE để bao gồm băng tần chính
+BAND=$(echo "$O" | awk '/^LTE band:/ {print $3}')
+FREQ=$(echo "$O" | awk '/^LTE band:/ {print $6}')
+
+if [ -n "$BAND" ]; then
+    PBAND="B${BAND} @${FREQ} MHz"
+    MODE="$MODE ${BAND}"
+else
+    PBAND="-"
+fi
+
 
 # Hàm trợ giúp lấy chuỗi band tần với tần số (ví dụ: B3 @1800 MHz)
 get_band_string() {
@@ -1832,8 +1840,8 @@ cat << JSONEOF
     "rsrq": "$(sanitize_number "$RSRQ")",
     "rssi": "$(sanitize_number "$RSSI")",
     "sinr": "$(sanitize_number "$SINR")",
-    "rx_data": $(sanitize_number "$RX_BYTES"),
-    "tx_data": $(sanitize_number "$TX_BYTES"),
+	"rx_data": $(sanitize_number "$RX_BYTES"),
+	"tx_data": $(sanitize_number "$TX_BYTES"),
     "rx_speed": "$RX_SPEED_FORMAT",
     "tx_speed": "$TX_SPEED_FORMAT",
     "ping": "$(sanitize_string "$PING_MS")",
@@ -1841,6 +1849,7 @@ cat << JSONEOF
     "ping_quality": "$(sanitize_string "$PING_QUALITY")"
 }
 JSONEOF
+
 EOF
 
 # 4. Cấp quyền thực thi cho CGI

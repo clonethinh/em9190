@@ -42,31 +42,25 @@ sanitize_number() {
 }
 
 # ==== INTERFACE VÀ IP WAN ====
-# Phát hiện interface có IP (ưu tiên: wwan0, eth2, usb0, 5G, fallback: default route, cuối cùng là br-lan)
+# Phát hiện tên interface mạng đang hoạt động (wwan0, eth2, usb0, 5G, hoặc interface có default route)
 detect_interface() {
-    for iface in wwan0 eth2 usb0 5G; do
-        if ifconfig "$iface" 2>/dev/null | grep -q "inet "; then
-            echo "$iface"
-            return 0
-        fi
-    done
-
-    # Fallback: interface của default route
-    fallback_iface=$(ip route | awk '/default/ {print $5}' | head -1)
-    if [ -n "$fallback_iface" ]; then
-        echo "$fallback_iface"
-        return 0
-    fi
-
-    # Fallback cuối cùng: br-lan nếu có IP
-    if ifconfig br-lan 2>/dev/null | grep -q "inet "; then
+    # Ưu tiên wwan0 nếu có IP
+    if ifconfig wwan0 2>/dev/null | grep -q "inet "; then
+        echo "wwan0"
+    # Fallback về br-lan nếu wwan0 không có IP
+    elif ifconfig br-lan 2>/dev/null | grep -q "inet "; then
         echo "br-lan"
-        return 0
+    # Thử các interface khác
+    else
+        for iface in eth2 usb0 5G; do
+            if ifconfig "$iface" 2>/dev/null | grep -q "inet "; then
+                echo "$iface"
+                return
+            fi
+        done
+        ip route | awk '/default/ {print $5}' | head -1
     fi
-
-    echo "-"  # Không tìm thấy interface nào hợp lệ
 }
-
 
 
 # Lấy địa chỉ IP WAN của interface được chỉ định, ưu tiên ubus, sau đó ifconfig, ip addr
@@ -379,7 +373,7 @@ case "$PROTO_INFO" in
 esac
 
 # Lấy thông tin interface logic (tên trong /etc/config/network)
-IFNAME=$(detect_interface)
+IFNAME="5G"
 
 # Lấy thiết bị vật lý (ví dụ wwan0)
 IFACE=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.l3_device')
@@ -389,8 +383,8 @@ IP_WAN=$(ubus call network.interface.$IFNAME status | jsonfilter -e '@["ipv4-add
 [ -z "$IP_WAN" ] && IP_WAN="-"
 
 # Lấy thời gian hoạt động (uptime) chính xác từ ifstatus (đơn vị: giây)
-UPTIME=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.uptime')
-[ -z "$UPTIME" ] && UPTIME=0  # fallback nếu lỗi
+IP_WAN=$(curl -s --max-time 2 https://api.ipify.org?format=json | jsonfilter -e "@.ip")
+[ -z "$IP_WAN" ] && IP_WAN="-"  # fallback
 
 # Chuyển uptime sang hh:mm:ss
 CONN_TIME=$(printf "%02d:%02d:%02d" $((UPTIME/3600)) $((UPTIME%3600/60)) $((UPTIME%60)))
@@ -500,7 +494,7 @@ echo "$CURRENT_SAMPLE_TIME" > "$LAST_SAMPLE_TIME_FILE"
 # ==== IN DỮ LIỆU DƯỚI DẠNG JSON ====
 cat << JSONEOF
 {
-    "conn_time": "$(sanitize_string "$CONN_TIME")",
+	"conn_time": "$UPTIME",
     "rx": "$(sanitize_number "$RX_BYTES")",
     "tx": "$(sanitize_number "$TX_BYTES")",
     "status": "$(sanitize_string "$STATUS")",
@@ -547,10 +541,12 @@ cat << JSONEOF
     "sinr": "$(sanitize_number "$SINR")",
     "rx_data": "$(sanitize_number "$RX_BYTES")",
     "tx_data": "$(sanitize_number "$TX_BYTES")",
-    "rx_speed": "$(sanitize_string "$RX_SPEED_FORMAT")",
-    "tx_speed": "$(sanitize_string "$TX_SPEED_FORMAT")",
+	"rx_speed": "$RX_SPEED_FMT",
+	"tx_speed": "$TX_SPEED_FMT",
 	"ping": "$(sanitize_string "$PING_MS")",
 	"ping_host": "$(sanitize_string "$PING_HOST")",
-	"ping_quality": "$(sanitize_string "$PING_QUALITY")"
+	"ping_quality": "$(sanitize_string "$PING_QUALITY")",
+	"rx": "$RX_BYTES",
+	"tx": "$TX_BYTES",
 }
 JSONEOF

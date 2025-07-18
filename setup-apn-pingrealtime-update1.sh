@@ -1801,6 +1801,7 @@ EOF
 # 4. Cấp quyền thực thi cho CGI
 echo "Cấp quyền thực thi cho CGI..."
 chmod +x "$CGI_DIR/em9190-info"
+chmod +x "$CGI_DIR/ping-info"
 
 # 5. Cấu hình uhttpd
 echo "Cấu hình uhttpd..."

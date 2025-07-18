@@ -381,10 +381,6 @@ IFACE=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.l3_device')
 [ -z "$IFACE" ] && IFACE=$(detect_interface)
 [ -z "$IFACE" ] && IFACE="br-lan"
 
-
-# Lấy thiết bị vật lý (ví dụ wwan0)
-IFACE=$(ifstatus "$IFNAME" 2>/dev/null | jsonfilter -e '@.l3_device')
-
 # Lấy IP WAN (ưu tiên dùng ubus cho chuẩn)
 IP_WAN=$(ubus call network.interface.$IFNAME status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address')
 if [ -z "$IP_WAN" ] || [ "$IP_WAN" = "null" ]; then

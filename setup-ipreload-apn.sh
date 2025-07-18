@@ -597,6 +597,37 @@ cat > "$WEB_DIR/index.html" << 'EOF'
     .refresh-btn.mini:active {
         transform: scale(0.95);
     }
+    .apn-select-wrapper {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    
+    .apn-dropdown {
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      transition: all 0.3s ease;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .apn-dropdown:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+    }
+    
+    .apn-btn {
+      width: 2.2rem;
+      height: 2.2rem;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0;
+    }
+
 </style>
 </head>
 <body data-theme="dark">
@@ -681,6 +712,18 @@ cat > "$WEB_DIR/index.html" << 'EOF'
                 <div class="info-row">
                     <span class="info-label">APN Hiện tại:</span>
                     <span class="info-value" id="currentApn">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Đổi APN:</span>
+                    <span class="info-value apn-select-wrapper">
+                      <select id="apnSelector" class="apn-dropdown">
+                        <option value="">-- Chọn nhà mạng --</option>
+                        <option value="v-internet">Viettel</option>
+                        <option value="m3-world">Vinaphone</option>
+                        <option value="internet">Mobifone</option>
+                      </select>
+                      <button onclick="applyApn()" class="refresh-btn mini apn-btn" title="Áp dụng APN">✔</button>
+                    </span>
                 </div>
             </div>
             
@@ -1048,6 +1091,28 @@ cat > "$WEB_DIR/index.html" << 'EOF'
                 stopCountdown();
             }
         }
+        function applyApn() {
+            const apn = document.getElementById("apnSelector").value;
+            if (!apn) {
+                showError("Vui lòng chọn nhà mạng để đặt APN.");
+                return;
+            }
+        
+            fetch(`/cgi-bin/em9190-info?action=set_apn&value=${encodeURIComponent(apn)}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status === 'ok') {
+                        showError("✅ Đặt APN thành công! Đang khởi động lại...");
+                        setTimeout(loadData, 3000); // tải lại sau vài giây
+                    } else {
+                        showError("❌ Không thể đặt APN.");
+                    }
+                })
+                .catch(err => {
+                    console.error("APN error", err);
+                    showError("❌ Lỗi khi đặt APN.");
+                });
+        }
         
         document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
         
@@ -1071,7 +1136,7 @@ EOF
 echo "Tạo CGI script..."
 cat > "$CGI_DIR/em9190-info" << 'EOF'
 #!/bin/sh
-
+exec 2>/dev/null
 echo "Content-Type: application/json"
 echo ""
 
@@ -1488,6 +1553,35 @@ if echo "$QUERY_STRING" | grep -q "action=restart"; then
     echo '{"status":"ok"}' # Trả về kết quả thành công
     exit 0 # Thoát script
 fi
+#============================================
+# ==== XỬ LÝ YÊU CẦU SET APN MỚI ====
+if echo "$QUERY_STRING" | grep -q "action=set_apn"; then
+    # Tách giá trị APN từ chuỗi truy vấn
+    NEW_APN=$(echo "$QUERY_STRING" | sed -n 's/.*value=\([^&]*\).*/\1/p' | sed 's/%20/ /g' | sed 's/[^a-zA-Z0-9._-]//g')
+
+    # Kiểm tra có giá trị hay không
+    if [ -n "$NEW_APN" ]; then
+        echo "DEBUG_APN: Nhận yêu cầu set APN mới: $NEW_APN" >> /tmp/apn_debug.log
+
+        # Ghi vào cấu hình UCI cho interface '5G'
+        uci set network.5G.apn="$NEW_APN"
+        uci commit network
+
+        # Khởi động lại mạng (background để không chặn)
+        /etc/init.d/network restart >/dev/null 2>&1 &
+
+        # Trả kết quả thành công
+        echo "Content-Type: application/json"
+        echo ""
+        echo '{"status":"ok", "apn":"'"$NEW_APN"'"}'
+    else
+        echo "Content-Type: application/json"
+        echo ""
+        echo '{"status":"fail", "message":"APN không hợp lệ"}'
+    fi
+    exit 0
+fi
+
 
 # ==== LƯU TRỮ THÔNG TIN MẪU CHO LẦN SAU ====
 # Ghi số byte Rx/Tx hiện tại và thời gian lấy mẫu vào các tệp tạm
@@ -1548,7 +1642,6 @@ cat << JSONEOF
     "rx_speed": "$(sanitize_string "$RX_SPEED_FORMAT")",
     "tx_speed": "$(sanitize_string "$TX_SPEED_FORMAT")"
 }
-JSONEOF
 JSONEOF
 EOF
 

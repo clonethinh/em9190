@@ -749,7 +749,7 @@ cat > "$WEB_DIR/index.html" << 'EOF'
                         <option value="">-- Chọn nhà mạng --</option>
                         <option value="v-internet">Viettel</option>
                         <option value="m3-world">Vinaphone</option>
-                        <option value="internet">Mobifone</option>
+                        <option value="m-wap">Mobifone</option>
                       </select>
                       <button onclick="applyApn()" class="refresh-btn mini apn-btn" title="Áp dụng APN">✔</button>
                     </span>
@@ -1199,7 +1199,7 @@ cat > "$WEB_DIR/index.html" << 'EOF'
         function applyApn() {
             const apn = document.getElementById("apnSelector").value;
             if (!apn) {
-                showError("Vui lòng chọn nhà mạng để đặt APN.");
+                showToast("⚠️ Vui lòng chọn nhà mạng để đặt APN.", "error");
                 return;
             }
         
@@ -1207,17 +1207,63 @@ cat > "$WEB_DIR/index.html" << 'EOF'
                 .then(response => response.json())
                 .then(result => {
                     if (result.status === 'ok') {
-                        showError("✅ Đặt APN thành công! Đang khởi động lại...");
-                        setTimeout(loadData, 3000); // tải lại sau vài giây
+                        showToast("✅ Đặt APN thành công!", "success");
+                        setTimeout(loadData, 3000);
                     } else {
-                        showError("❌ Không thể đặt APN.");
+                        const msg = result.message || "Không xác định";
+                        showToast(`❌ Không thể đặt APN (${msg})`, "error");
                     }
                 })
                 .catch(err => {
                     console.error("APN error", err);
-                    showError("❌ Lỗi khi đặt APN.");
+                    showToast("❌ Lỗi khi đặt APN.", "error");
                 });
         }
+        function showToast(msg, type = "info") {
+            const box = document.createElement("div");
+            box.innerText = msg;
+            box.style.position = "fixed";
+            box.style.top = "20px";
+            box.style.left = "50%";
+            box.style.transform = "translateX(-50%)";
+            box.style.padding = "12px 20px";
+            box.style.borderRadius = "8px";
+            box.style.boxShadow = "0 2px 6px rgba(0,0,0,0.3)";
+            box.style.zIndex = 10000;
+            box.style.color = "#fff";
+            box.style.fontSize = "16px";
+            box.style.opacity = "0";
+            box.style.transition = "opacity 0.3s ease, transform 0.3s ease";
+        
+            // Màu theo loại
+            switch (type) {
+                case "success":
+                    box.style.backgroundColor = "#4CAF50"; // Xanh lá
+                    break;
+                case "error":
+                    box.style.backgroundColor = "#f44336"; // Đỏ
+                    break;
+                default:
+                    box.style.backgroundColor = "#333"; // Mặc định: xám đậm
+            }
+        
+            document.body.appendChild(box);
+        
+            // Fade-in
+            setTimeout(() => {
+                box.style.opacity = "1";
+                box.style.transform = "translateX(-50%) translateY(0)";
+            }, 10);
+        
+            // Fade-out sau 2.5s và remove
+            setTimeout(() => {
+                box.style.opacity = "0";
+                box.style.transform = "translateX(-50%) translateY(-20px)";
+                setTimeout(() => box.remove(), 300);
+            }, 2500);
+        }
+
+
         
         document.getElementById('autoRefresh').addEventListener('change', toggleAutoRefresh);
         
@@ -1235,7 +1281,6 @@ cat > "$WEB_DIR/index.html" << 'EOF'
     </script>
 </body>
 </html>
-
 EOF
 
 echo "đang tạo ping-info..."
